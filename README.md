@@ -35,6 +35,29 @@ npm run dev
 
 Abra `http://localhost:3000`.
 
+## Publicação fácil no GitHub Pages
+
+O projeto inclui um workflow que gera a versão totalmente estática e publica
+automaticamente todo push na branch `main`. O endereço esperado deste
+repositório é:
+
+<https://jvvtr.github.io/royalpath-tibia-rp/>
+
+Antes do primeiro deploy, abra **Settings → Pages** no repositório e escolha
+**GitHub Actions** em **Source**. Depois disso, os próximos pushes na `main`
+serão publicados sem comandos manuais.
+
+Para validar exatamente o mesmo artefato antes de enviar:
+
+```bash
+npm run test:pages
+```
+
+O comando cria `out/`, aplica automaticamente o subdiretório correto do
+repositório, verifica o HTML e confirma os 44 sprites do Arsenal. Em forks, o
+nome do dono e do repositório são inferidos pelo GitHub Actions; domínio próprio
+também é respeitado pelos dados fornecidos pelo Pages.
+
 ## Validação
 
 ```bash

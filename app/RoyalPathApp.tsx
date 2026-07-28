@@ -377,6 +377,10 @@ function ItemSprite({
   size?: "small" | "medium" | "large";
 }) {
   const [failed, setFailed] = useState(false);
+  const basePath = (process.env.NEXT_PUBLIC_BASE_PATH ?? "").replace(
+    /\/$/,
+    "",
+  );
 
   return (
     <span className={`item-sprite item-sprite-${size}`} aria-hidden="true">
@@ -386,7 +390,7 @@ function ItemSprite({
         // Native img preserves the tiny pixel-art file without an optimizer.
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={`/items/${item.id}.png`}
+          src={`${basePath}/items/${item.id}.png`}
           width={32}
           height={32}
           alt=""

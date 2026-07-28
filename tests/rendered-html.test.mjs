@@ -53,11 +53,11 @@ test("production output has absolute social metadata and no starter residue", as
 
   assert.match(
     html,
-    /<meta[^>]+property="og:image"[^>]+content="http:\/\/localhost\/og\.png"/i,
+    /<meta[^>]+property="og:image"[^>]+content="https:\/\/jvvtr\.github\.io\/royalpath-tibia-rp\/og\.png"/i,
   );
   assert.match(
     html,
-    /<link[^>]+rel="icon"[^>]+href="http:\/\/localhost\/favicon\.png"/i,
+    /<link[^>]+rel="icon"[^>]+href="https:\/\/jvvtr\.github\.io\/royalpath-tibia-rp\/favicon\.png"/i,
   );
   assert.doesNotMatch(html, /codex-preview|SkeletonPreview|taking shape/i);
   assert.doesNotMatch(html, /react-loading-skeleton/i);
