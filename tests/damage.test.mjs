@@ -10,6 +10,7 @@ import {
   criticalExpectedMultiplier,
   estimateAutoAttack,
   estimateFourSecondCycle,
+  estimateLevelAwareCycle,
   estimateLeech,
   estimateSpellProxy,
   onslaughtChance,
@@ -200,6 +201,56 @@ test("four-second cycle is explicit, deterministic and primary-target only", () 
     life: 284,
     mana: 91,
   });
+});
+
+test("beginner cycle only includes spells unlocked at the selected level", () => {
+  const input = {
+    autoAttack: {
+      level: 49,
+      distance: 75,
+      magicLevel: 8,
+      ammunitionAttack: 25,
+      weaponAttackModifier: 0,
+    },
+  };
+
+  const beforeCaldera = estimateLevelAwareCycle(input);
+  assert.equal(beforeCaldera.divineCaldera, null);
+  assert.equal(beforeCaldera.divineBarrage, null);
+  assert.deepEqual(beforeCaldera.assumptions, {
+    durationSeconds: 4,
+    autoAttacks: 2,
+    calderaCasts: 0,
+    barrageCasts: 0,
+    primaryTargetOnly: true,
+  });
+  assert.equal(beforeCaldera.rotationLabel, "2 ataques básicos em 4 s");
+  closeTo(
+    beforeCaldera.expectedDamage,
+    beforeCaldera.autoAttack.expectedDamagePerAttempt * 2,
+  );
+
+  const atCaldera = estimateLevelAwareCycle({
+    ...input,
+    autoAttack: { ...input.autoAttack, level: 50 },
+  });
+  assert.ok(atCaldera.divineCaldera);
+  assert.equal(atCaldera.divineBarrage, null);
+  assert.equal(atCaldera.assumptions.calderaCasts, 1);
+  assert.equal(atCaldera.assumptions.barrageCasts, 0);
+
+  const atBarrage = estimateLevelAwareCycle({
+    ...input,
+    autoAttack: { ...input.autoAttack, level: 70 },
+  });
+  assert.ok(atBarrage.divineCaldera);
+  assert.ok(atBarrage.divineBarrage);
+  assert.equal(atBarrage.assumptions.calderaCasts, 1);
+  assert.equal(atBarrage.assumptions.barrageCasts, 1);
+  assert.equal(
+    atBarrage.rotationLabel,
+    "2 ataques + Caldera + Barrage em 4 s",
+  );
 });
 
 test("leech helper is deterministic and protects form calculations", () => {

@@ -35,8 +35,12 @@ test("server-renders the RoyalPath application shell", async () => {
   assert.match(html, /<html[^>]+lang="pt-BR"/i);
   assert.match(html, /<title>RoyalPath — Guia Royal Paladin<\/title>/i);
   assert.match(html, /RoyalPath/);
-  assert.match(html, /Seu próximo passo/);
-  assert.match(html, /Do primeiro arco ao/);
+  assert.match(html, /Seu Royal Paladin/);
+  assert.match(html, /Guia para quem está começando/);
+  assert.match(html, /Vida máxima/);
+  assert.match(html, /Mana máxima/);
+  assert.match(html, /DPS esperado/);
+  assert.match(html, /Defesa do set/);
   assert.match(html, /projeto 100% produzido com IA/i);
   assert.match(html, /sem fins lucrativos/i);
   assert.match(html, /id="character-level"/);

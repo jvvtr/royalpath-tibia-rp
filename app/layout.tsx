@@ -22,7 +22,7 @@ export async function generateMetadata(): Promise<Metadata> {
       template: "%s · RoyalPath",
     },
     description:
-      "Guia pessoal e gratuito de progressão, hunts, equipamentos e dano estimado para Royal Paladin no Tibia.",
+      "Guia simples e gratuito para iniciantes de Royal Paladin: vida, mana, equipamentos, defesa, dano estimado e onde caçar.",
     applicationName: "RoyalPath",
     keywords: [
       "Tibia",
@@ -45,7 +45,7 @@ export async function generateMetadata(): Promise<Metadata> {
       siteName: "RoyalPath",
       title: "RoyalPath — Guia Royal Paladin",
       description:
-        "Sua rota de progressão do level 8 ao endgame, revisada para julho de 2026.",
+        "Entenda seu Royal Paladin sem complicação: monte o set e veja vida, mana, defesa e DPS esperado.",
       images: [
         {
           url: new URL("/og.png", base),
@@ -59,7 +59,7 @@ export async function generateMetadata(): Promise<Metadata> {
       card: "summary_large_image",
       title: "RoyalPath — Guia Royal Paladin",
       description:
-        "Progressão, hunts, arsenal e simulador comparativo para Royal Paladin.",
+        "Guia simples para iniciantes: arsenal visual, progressão e simulador de Royal Paladin.",
       images: [new URL("/og.png", base)],
     },
   };

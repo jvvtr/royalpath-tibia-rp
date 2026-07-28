@@ -78,6 +78,7 @@ test("simulator catalog has compatible weapons, ammunition and modern BIS", () =
   assert.equal(ids.size, ITEMS.length);
   assert.ok(ITEMS.some((item) => item.slot === "weapon"));
   assert.ok(ITEMS.some((item) => item.slot === "ammo"));
+  assert.ok(ids.has("arrow"));
   assert.ok(ids.has("diamond-arrow"));
   assert.ok(ids.has("spectral-bolt"));
   assert.ok(ids.has("soulbleeder"));
