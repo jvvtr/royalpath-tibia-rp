@@ -1400,6 +1400,19 @@ export const ITEMS: readonly Item[] = [
     confidence: "média",
   },
   {
+    id: "arrow",
+    name: "Arrow",
+    slot: "ammo",
+    minLevel: 0,
+    attack: 25,
+    useCase: ["primeiros levels", "baixo custo", "bows"],
+    icon: "➤",
+    summary:
+      "Munição básica para começar com bows sem inventar o dano de uma arrow de level alto.",
+    stage: "progressão",
+    ...WIKI_DISTANCE,
+  },
+  {
     id: "onyx-arrow",
     name: "Onyx Arrow",
     slot: "ammo",

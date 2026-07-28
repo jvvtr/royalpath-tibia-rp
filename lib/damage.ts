@@ -172,6 +172,28 @@ export type FourSecondCycleEstimate = {
   caveats: readonly string[];
 };
 
+export type LevelAwareCycleEstimate = {
+  modelVersion: typeof DAMAGE_MODEL_VERSION;
+  autoAttack: AutoAttackEstimate;
+  divineCaldera: SpellProxyEstimate | null;
+  divineBarrage: SpellProxyEstimate | null;
+  assumptions: {
+    durationSeconds: 4;
+    autoAttacks: 2;
+    calderaCasts: 0 | 1;
+    barrageCasts: 0 | 1;
+    primaryTargetOnly: true;
+  };
+  rotationLabel: string;
+  expectedDamage: number;
+  expectedDps: number;
+  primaryTargetLeech: {
+    life: number;
+    mana: number;
+  };
+  caveats: readonly string[];
+};
+
 const ONSLAUGHT_CHANCE_BY_TIER = [
   0,
   0.5,
@@ -553,5 +575,84 @@ export function estimateFourSecondCycle(
   };
 }
 
+/**
+ * Beginner-facing four-second comparison that only adds spells once the
+ * character can actually use them. It intentionally remains a transparent
+ * planning proxy instead of presenting an exact in-game rotation.
+ */
+export function estimateLevelAwareCycle(
+  input: FourSecondCycleInput,
+): LevelAwareCycleEstimate {
+  const level = Math.floor(nonNegative(input.autoAttack.level));
+  const autoAttack = estimateAutoAttack(input.autoAttack);
+  const canUseCaldera = level >= 50;
+  const canUseBarrage = level >= 70;
+  const commonSpellInput = {
+    level,
+    distance: input.autoAttack.distance,
+    magicLevel:
+      input.magicLevel ?? input.autoAttack.magicLevel ?? 0,
+    stance: input.autoAttack.stance,
+    school: "holy" as const,
+    accuracyPercent: 100,
+    targetResistancePercent:
+      input.autoAttack.targetResistancePercent,
+    critical: input.autoAttack.critical,
+    includeOnslaught: input.includeOnslaughtOnSpells ?? false,
+    forgeTier: input.autoAttack.forgeTier,
+  };
+
+  const divineCaldera = canUseCaldera
+    ? estimateSpellProxy({
+        ...commonSpellInput,
+        basePower: input.calderaPower ?? 150,
+      })
+    : null;
+  const divineBarrage = canUseBarrage
+    ? estimateSpellProxy({
+        ...commonSpellInput,
+        basePower: input.barragePower ?? 130,
+      })
+    : null;
+  const expectedDamage =
+    autoAttack.expectedDamagePerAttempt * 2 +
+    (divineCaldera?.expectedDamagePerCast ?? 0) +
+    (divineBarrage?.expectedDamagePerCast ?? 0);
+  const rotationLabel = canUseBarrage
+    ? "2 ataques + Caldera + Barrage em 4 s"
+    : canUseCaldera
+      ? "2 ataques + Caldera em 4 s"
+      : "2 ataques básicos em 4 s";
+
+  return {
+    modelVersion: DAMAGE_MODEL_VERSION,
+    autoAttack,
+    divineCaldera,
+    divineBarrage,
+    assumptions: {
+      durationSeconds: 4,
+      autoAttacks: 2,
+      calderaCasts: canUseCaldera ? 1 : 0,
+      barrageCasts: canUseBarrage ? 1 : 0,
+      primaryTargetOnly: true,
+    },
+    rotationLabel,
+    expectedDamage,
+    expectedDps: expectedDamage / 4,
+    primaryTargetLeech: estimateLeech(
+      expectedDamage,
+      input.autoAttack.lifeLeechPercent,
+      input.autoAttack.manaLeechPercent,
+    ),
+    caveats: [
+      ...AUTO_ATTACK_CAVEATS,
+      ...(canUseCaldera || canUseBarrage ? SPELL_CAVEATS : []),
+      "O ciclo só inclui spells liberadas pelo level informado.",
+      "Onslaught em spells fica desligado por padrão.",
+    ],
+  };
+}
+
 export const calculateDamage = estimateAutoAttack;
 export const calculateFourSecondCycle = estimateFourSecondCycle;
+export const calculateLevelAwareCycle = estimateLevelAwareCycle;

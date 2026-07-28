@@ -9,201 +9,69 @@ import {
   MILESTONES,
   PROGRESSION_BANDS,
   SOURCES,
+  type BisContext,
+  type Guide,
+  type Hunt,
+  type Item,
+  type ItemSlot,
+  type ProgressionBand,
 } from "./content";
 import {
+  calculateCharacterStats,
+  type CharacterStats,
+} from "../lib/character";
+import {
   DAMAGE_MODEL_VERSION,
-  estimateAutoAttack,
-  estimateFourSecondCycle,
+  estimateLevelAwareCycle,
+  type LevelAwareCycleEstimate,
   type PaladinStance,
 } from "../lib/damage";
 
-type ViewId =
-  | "agora"
-  | "roadmap"
-  | "hunts"
-  | "arsenal"
-  | "academia"
-  | "simulador";
+type ViewId = "inicio" | "arsenal" | "simulador" | "hunts" | "jornada";
+type EquipmentSlot = ItemSlot;
 
-type EquipmentSlot =
-  | "head"
-  | "amulet"
-  | "armor"
-  | "quiver"
-  | "weapon"
-  | "legs"
-  | "ammo"
-  | "boots"
-  | "ring";
-
-type UiMilestone = {
-  id: string;
-  level: number;
-  levelLabel: string;
-  title: string;
-  summary: string;
-  actions: readonly string[];
-  tags: readonly string[];
-  sourceUrl?: string;
+type CombatSettings = {
+  stance: PaladinStance;
+  resistance: number;
+  forgeTier: number;
+  powerfulStrike: boolean;
+  powerfulVamp: boolean;
+  powerfulVoid: boolean;
 };
 
-type UiBand = {
-  id: string;
-  minLevel: number;
-  maxLevel: number | null;
-  levelLabel: string;
-  title: string;
-  focus: string;
-  goals: readonly string[];
-  loadout: readonly string[];
-  rotation: string;
-  caution: string;
-  sourceUrl?: string;
-};
-
-type UiHunt = {
-  id: string;
-  name: string;
-  minLevel: number;
-  location: string;
-  focus: readonly ("leveling" | "farm" | "equilibrada" | "aprendizado")[];
-  xp: string;
-  loot: string;
-  metricStatus: string;
-  risk: "baixo" | "moderado" | "alto" | "muito alto";
-  ammo: string;
-  access: string;
-  creatures: readonly string[];
-  tips: readonly string[];
-  sourceUrl: string;
-  sourceName: string;
-  confidence: string;
-};
-
-type UiItem = {
-  id: string;
-  name: string;
-  slot: EquipmentSlot;
-  minLevel: number;
-  attack?: number;
-  hit?: number;
+type StoredProfile = {
+  level?: number;
   distance?: number;
-  magic?: number;
-  armor?: number;
-  protection?: readonly string[];
-  imbueSlots?: number;
-  tierClass?: number;
-  useCase: readonly string[];
-  icon: string;
-  summary: string;
-  sourceUrl: string;
-  sourceName: string;
-  confidence: string;
+  magicLevel?: number;
+  completed?: string[];
+  loadout?: Partial<Record<EquipmentSlot, string>>;
+  settings?: Partial<CombatSettings>;
 };
 
-type UiGuide = {
-  id: string;
-  category: string;
-  title: string;
-  eyebrow: string;
-  summary: string;
-  estimatedTime: string;
-  steps: ReadonlyArray<{
-    title: string;
-    body: string;
-    detail?: readonly string[];
-  }>;
-  checklist: readonly string[];
-  warnings: readonly string[];
-  sourceUrl: string;
-  sourceName: string;
+type CombatSummary = LevelAwareCycleEstimate & {
+  compatible: boolean;
+  compatibilityMessage: string | null;
+  weapon: Item | undefined;
+  ammo: Item | undefined;
+  effectiveStance: PaladinStance;
 };
-
-type UiSource = {
-  id: string;
-  name: string;
-  url: string;
-  kind?: string;
-  description?: string;
-};
-
-type UiBisContext = {
-  id: string;
-  label: string;
-  minLevel: number;
-  goal: string;
-  slots: Partial<Record<EquipmentSlot, readonly string[]>>;
-  tradeoff: string;
-  sourceUrl: string;
-  sourceName: string;
-};
-
-const milestones = MILESTONES as unknown as readonly UiMilestone[];
-const progressionBands = PROGRESSION_BANDS as unknown as readonly UiBand[];
-const hunts = HUNTS as unknown as readonly UiHunt[];
-const items = ITEMS as unknown as readonly UiItem[];
-const guides = GUIDES as unknown as readonly UiGuide[];
-const sources = SOURCES as unknown as readonly UiSource[];
-const bisContexts = BIS_CONTEXTS as unknown as readonly UiBisContext[];
 
 const NAVIGATION: ReadonlyArray<{
   id: ViewId;
   label: string;
-  mobileLabel: string;
-  icon: string;
-  title: string;
-  eyebrow: string;
-  kicker?: string;
+  shortLabel: string;
+  marker: string;
 }> = [
-  {
-    id: "agora",
-    label: "Agora",
-    mobileLabel: "Agora",
-    icon: "✦",
-    title: "Seu próximo passo",
-    eyebrow: "Painel de jornada",
-  },
-  {
-    id: "roadmap",
-    label: "Roadmap",
-    mobileLabel: "Rota",
-    icon: "⌁",
-    title: "Rota de progressão",
-    eyebrow: "Level 8 ao 1000+",
-  },
-  {
-    id: "hunts",
-    label: "Hunts",
-    mobileLabel: "Hunts",
-    icon: "⌖",
-    title: "Mapa de hunts",
-    eyebrow: "Leveling e farm",
-  },
-  {
-    id: "arsenal",
-    label: "Arsenal",
-    mobileLabel: "Itens",
-    icon: "♜",
-    title: "Arsenal do paladino",
-    eyebrow: "Loadouts por contexto",
-  },
-  {
-    id: "academia",
-    label: "Academia",
-    mobileLabel: "Guias",
-    icon: "⌘",
-    title: "Academia Royal",
-    eyebrow: "Mecânicas sem mistério",
-  },
+  { id: "inicio", label: "Início", shortLabel: "Início", marker: "01" },
+  { id: "arsenal", label: "Arsenal", shortLabel: "Itens", marker: "02" },
   {
     id: "simulador",
     label: "Simulador",
-    mobileLabel: "Dano",
-    icon: "◈",
-    title: "Simulador de dano",
-    eyebrow: "Estimativa comparativa",
-    kicker: "Beta",
+    shortLabel: "Simular",
+    marker: "03",
   },
+  { id: "hunts", label: "Onde caçar", shortLabel: "Hunts", marker: "04" },
+  { id: "jornada", label: "Jornada", shortLabel: "Guia", marker: "05" },
 ];
 
 const SLOT_ORDER: readonly EquipmentSlot[] = [
@@ -230,46 +98,168 @@ const SLOT_LABELS: Record<EquipmentSlot, string> = {
   ring: "Anel",
 };
 
-const STORAGE_KEY = "royalpath-profile-v1";
+const PROTECTION_LABELS: Record<string, string> = {
+  physical: "Físico",
+  fire: "Fogo",
+  earth: "Terra",
+  energy: "Energia",
+  ice: "Gelo",
+  holy: "Holy",
+  death: "Death",
+};
 
-function clampLevel(value: number) {
-  if (!Number.isFinite(value)) return 8;
-  return Math.min(2500, Math.max(8, Math.round(value)));
+const STORAGE_KEY = "royalpath-profile-v2";
+const LEGACY_STORAGE_KEY = "royalpath-profile-v1";
+const DEFAULT_LEVEL = 8;
+const DEFAULT_DISTANCE = 70;
+const DEFAULT_MAGIC_LEVEL = 5;
+const DEFAULT_SETTINGS: CombatSettings = {
+  stance: "sharpshooter",
+  resistance: 0,
+  forgeTier: 0,
+  powerfulStrike: false,
+  powerfulVamp: false,
+  powerfulVoid: false,
+};
+
+function clamp(value: number, min: number, max: number, fallback: number) {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(value)));
 }
 
-function bandForLevel(level: number) {
+function clampLevel(value: number) {
+  return clamp(value, 8, 2500, DEFAULT_LEVEL);
+}
+
+function itemById(id: string | undefined) {
+  return ITEMS.find((item) => item.id === id);
+}
+
+function bandForLevel(level: number): ProgressionBand {
   return (
-    progressionBands.find(
+    PROGRESSION_BANDS.find(
       (band) =>
         level >= band.minLevel &&
         (band.maxLevel === null || level <= band.maxLevel),
-    ) ?? progressionBands[progressionBands.length - 1]
+    ) ?? PROGRESSION_BANDS[PROGRESSION_BANDS.length - 1]
   );
 }
 
-function suggestedLoadout(level: number): Partial<Record<EquipmentSlot, string>> {
+function weaponKind(item: Item | undefined) {
+  if (!item || item.slot !== "weapon") return "none";
+  if (/crossbow|arbalest|piercer/i.test(item.name)) return "crossbow";
+  if (/spear|star|knife|javelin/i.test(item.name)) return "thrown";
+  return "bow";
+}
+
+function ammoKind(item: Item | undefined) {
+  if (!item || item.slot !== "ammo") return "none";
+  return /bolt/i.test(item.name) ? "bolt" : "arrow";
+}
+
+function isAmmoCompatible(weapon: Item | undefined, ammo: Item | undefined) {
+  const kind = weaponKind(weapon);
+  if (kind === "thrown") return !ammo;
+  if (kind === "crossbow") return ammoKind(ammo) === "bolt";
+  if (kind === "bow") return ammoKind(ammo) === "arrow";
+  return false;
+}
+
+function eligibleItems(slot: EquipmentSlot, level: number) {
+  return ITEMS.filter(
+    (item) => item.slot === slot && item.minLevel <= level,
+  );
+}
+
+function bestItemForSlot(
+  slot: EquipmentSlot,
+  level: number,
+  preferredKind?: "arrow" | "bolt" | "bow",
+) {
+  const eligible = eligibleItems(slot, level);
+  const preferred = preferredKind
+    ? eligible.filter((item) => {
+        if (preferredKind === "bow") return weaponKind(item) === "bow";
+        return ammoKind(item) === preferredKind;
+      })
+    : eligible;
+
+  return [...(preferred.length ? preferred : eligible)].sort(
+    (a, b) => b.minLevel - a.minLevel,
+  )[0];
+}
+
+function suggestedLoadout(
+  level: number,
+): Partial<Record<EquipmentSlot, string>> {
   const result: Partial<Record<EquipmentSlot, string>> = {};
 
   for (const slot of SLOT_ORDER) {
-    const eligible = items.filter(
-      (item) => item.slot === slot && item.minLevel <= level,
-    );
-    const preferred =
+    const best =
       slot === "weapon"
-        ? eligible.filter((item) => /bow/i.test(item.name))
+        ? bestItemForSlot(slot, level, "bow")
         : slot === "ammo"
-          ? eligible.filter((item) => /arrow/i.test(item.name))
-          : eligible;
-    const best = (preferred.length ? preferred : eligible)
-      .sort((a, b) => b.minLevel - a.minLevel)[0];
+          ? bestItemForSlot(slot, level, "arrow")
+          : bestItemForSlot(slot, level);
     if (best) result[slot] = best.id;
   }
 
   return result;
 }
 
+function reconcileLoadout(
+  level: number,
+  current: Partial<Record<EquipmentSlot, string>> = {},
+) {
+  const suggested = suggestedLoadout(level);
+  const next: Partial<Record<EquipmentSlot, string>> = {};
+
+  for (const slot of SLOT_ORDER) {
+    const selected = itemById(current[slot]);
+    if (
+      selected &&
+      selected.slot === slot &&
+      selected.minLevel <= level
+    ) {
+      next[slot] = selected.id;
+    } else if (suggested[slot]) {
+      next[slot] = suggested[slot];
+    }
+  }
+
+  const weapon = itemById(next.weapon);
+  const kind = weaponKind(weapon);
+  if (kind === "thrown") {
+    delete next.ammo;
+  } else {
+    const ammo = itemById(next.ammo);
+    const expected = kind === "crossbow" ? "bolt" : "arrow";
+    if (ammoKind(ammo) !== expected) {
+      const replacement = bestItemForSlot("ammo", level, expected);
+      if (replacement) next.ammo = replacement.id;
+      else delete next.ammo;
+    }
+  }
+
+  return next;
+}
+
+function sameLoadout(
+  left: Partial<Record<EquipmentSlot, string>>,
+  right: Partial<Record<EquipmentSlot, string>>,
+) {
+  return SLOT_ORDER.every((slot) => left[slot] === right[slot]);
+}
+
+function focusLabel(focus: string) {
+  if (focus === "leveling") return "Leveling";
+  if (focus === "farm") return "Farm";
+  if (focus === "equilibrada") return "Equilibrada";
+  return "Aprendizado";
+}
+
 function metric(value: string | null | undefined) {
-  return value?.trim() || "em reteste";
+  return value?.trim() || "Em reteste";
 }
 
 function metricScore(value: string) {
@@ -283,129 +273,298 @@ function metricScore(value: string) {
   return /kk|milh/i.test(value) ? average * 1_000_000 : average * 1_000;
 }
 
-function itemById(id: string | undefined) {
-  return items.find((item) => item.id === id);
+function riskClass(risk: Hunt["risk"]) {
+  if (risk === "baixo") return "risk-low";
+  if (risk === "alto" || risk === "muito alto") return "risk-high";
+  return "risk-medium";
 }
 
-function slotClass(slot: EquipmentSlot) {
-  return `slot-${slot}`;
+function protectionEntries(stats: CharacterStats) {
+  return Object.entries(stats.protections)
+    .filter(([, value]) => Math.abs(value) > 0.04)
+    .sort((left, right) => right[1] - left[1]);
 }
 
-function parseFocusLabel(focus: string) {
-  if (focus === "leveling") return "Leveling";
-  if (focus === "farm") return "Farm";
-  if (focus === "equilibrada") return "Equilibrada";
-  return "Aprendizado";
+function formatProtection(value: number) {
+  const rounded = Math.round(value * 10) / 10;
+  return `${rounded > 0 ? "+" : ""}${rounded}%`;
 }
 
-function riskClass(risk: UiHunt["risk"]) {
-  if (risk === "baixo") return "risk-baixo";
-  if (risk === "alto" || risk === "muito alto") return "risk-alto";
-  return "";
+function itemStats(item: Item) {
+  const stats: string[] = [];
+  if (item.attack !== undefined) {
+    stats.push(
+      item.slot === "ammo" || weaponKind(item) === "thrown"
+        ? `Atk ${item.attack}`
+        : `Atk +${item.attack}`,
+    );
+  }
+  if (item.hit) stats.push(`Hit +${item.hit}`);
+  if (item.distance) stats.push(`Dist +${item.distance}`);
+  if (item.magic) stats.push(`Holy ML +${item.magic}`);
+  if (item.armor) stats.push(`Arm ${item.armor}`);
+  if (item.protection?.length) stats.push(item.protection[0]);
+  return stats.slice(0, 3);
 }
 
-function guideIcon(guide: UiGuide) {
-  const iconByCategory: Record<string, string> = {
-    "primeiros-passos": "✦",
-    combate: "⌁",
-    imbuement: "◇",
-    forge: "♜",
-    proficiency: "⌘",
+function combatSummary(
+  level: number,
+  stats: CharacterStats,
+  loadout: Partial<Record<EquipmentSlot, string>>,
+  settings: CombatSettings,
+): CombatSummary {
+  const weapon = itemById(loadout.weapon);
+  const selectedAmmo = itemById(loadout.ammo);
+  const kind = weaponKind(weapon);
+  const ammo = kind === "thrown" ? undefined : selectedAmmo;
+  const compatible = isAmmoCompatible(weapon, ammo);
+  const effectiveStance: PaladinStance =
+    level >= 20 ? settings.stance : "neutral";
+  const ammunitionAttack =
+    kind === "thrown" ? weapon?.attack ?? 0 : ammo?.attack ?? 0;
+  const weaponAttackModifier =
+    kind === "thrown" ? 0 : weapon?.attack ?? 0;
+
+  const cycle = estimateLevelAwareCycle({
+    autoAttack: {
+      level,
+      distance: stats.distance,
+      magicLevel: stats.magic,
+      stance: effectiveStance,
+      ammunitionAttack,
+      weaponAttackModifier,
+      accuracyPercent: compatible ? 100 : 0,
+      targetResistancePercent: settings.resistance,
+      critical: settings.powerfulStrike
+        ? { chancePercent: 10, extraDamagePercent: 50 }
+        : { chancePercent: 5, extraDamagePercent: 10 },
+      forgeTier: settings.forgeTier,
+      lifeLeechPercent: settings.powerfulVamp ? 25 : 0,
+      manaLeechPercent: settings.powerfulVoid ? 8 : 0,
+    },
+    magicLevel: stats.magic,
+  });
+
+  let compatibilityMessage: string | null = null;
+  if (!weapon) {
+    compatibilityMessage = "Escolha uma arma para calcular o dano.";
+  } else if (kind === "bow" && !ammo) {
+    compatibilityMessage = "Escolha uma arrow para este bow.";
+  } else if (kind === "crossbow" && !ammo) {
+    compatibilityMessage = "Escolha um bolt para este crossbow.";
+  } else if (!compatible) {
+    compatibilityMessage =
+      kind === "crossbow"
+        ? "Crossbows precisam de bolts."
+        : "Bows precisam de arrows.";
+  }
+
+  return {
+    ...cycle,
+    compatible,
+    compatibilityMessage,
+    weapon,
+    ammo,
+    effectiveStance,
   };
-  return iconByCategory[guide.category] ?? "◈";
 }
 
-function Disclosure() {
-  return (
-    <div className="disclosure">
-      <span className="disclosure-icon" aria-hidden="true">
-        ◇
-      </span>
-      <div>
-        <strong>Transparência: projeto 100% produzido com IA</strong>
-        Pesquisa, arquitetura, conteúdo, identidade, código e testes foram
-        realizados com inteligência artificial e conferidos contra fontes
-        oficiais e comunitárias. É um projeto pessoal, gratuito, sem fins
-        lucrativos e não afiliado à CipSoft.
-      </div>
-    </div>
+function ItemSprite({
+  item,
+  size = "medium",
+}: {
+  item: Item;
+  size?: "small" | "medium" | "large";
+}) {
+  const [failed, setFailed] = useState(false);
+  const basePath = (process.env.NEXT_PUBLIC_BASE_PATH ?? "").replace(
+    /\/$/,
+    "",
   );
-}
 
-function Footer() {
   return (
-    <footer className="site-footer">
-      <div className="site-footer-row">
-        <div>
-          <div className="footer-brand">RoyalPath · Guia Royal Paladin</div>
-          Conteúdo revisado em 28 jul 2026 · Tibia 15.30 · valores podem mudar
-          em patches.
-        </div>
-        <div>
-          Projeto pessoal, gratuito e sem fins lucrativos, criado 100% com
-          auxílio de inteligência artificial.
-          <br />
-          Não afiliado, endossado ou mantido pela CipSoft GmbH. Tibia e seus
-          elementos pertencem aos respectivos titulares.
-        </div>
-      </div>
-    </footer>
+    <span className={`item-sprite item-sprite-${size}`} aria-hidden="true">
+      {failed ? (
+        <span className="sprite-fallback">{item.icon}</span>
+      ) : (
+        // Native img preserves the tiny pixel-art file without an optimizer.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={`${basePath}/items/${item.id}.png`}
+          width={32}
+          height={32}
+          alt=""
+          loading="lazy"
+          onError={() => setFailed(true)}
+        />
+      )}
+    </span>
   );
 }
 
 export default function RoyalPathApp() {
-  const [view, setView] = useState<ViewId>("agora");
-  const [level, setLevel] = useState(150);
+  const [view, setView] = useState<ViewId>("inicio");
+  const [level, setLevel] = useState(DEFAULT_LEVEL);
+  const [distance, setDistance] = useState(DEFAULT_DISTANCE);
+  const [magicLevel, setMagicLevel] = useState(DEFAULT_MAGIC_LEVEL);
   const [completed, setCompleted] = useState<string[]>([]);
   const [loadout, setLoadout] =
     useState<Partial<Record<EquipmentSlot, string>>>(() =>
-      suggestedLoadout(150),
+      suggestedLoadout(DEFAULT_LEVEL),
     );
+  const [settings, setSettings] =
+    useState<CombatSettings>(DEFAULT_SETTINGS);
+  const [notice, setNotice] = useState("");
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    let saved:
-      | {
-          level?: number;
-          completed?: string[];
-          loadout?: Partial<Record<EquipmentSlot, string>>;
-        }
-      | undefined;
+    let saved: StoredProfile | undefined;
+
     try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        saved = JSON.parse(raw) as {
-          level?: number;
-          completed?: string[];
-          loadout?: Partial<Record<EquipmentSlot, string>>;
-        };
-      }
+      const raw =
+        window.localStorage.getItem(STORAGE_KEY) ??
+        window.localStorage.getItem(LEGACY_STORAGE_KEY);
+      if (raw) saved = JSON.parse(raw) as StoredProfile;
     } catch {
-      // Local storage is optional; the app remains fully usable without it.
+      // Persistence is optional. The guide remains usable without it.
     }
 
     queueMicrotask(() => {
-      if (saved?.level) setLevel(clampLevel(saved.level));
-      if (Array.isArray(saved?.completed)) setCompleted(saved.completed);
-      if (saved?.loadout) setLoadout(saved.loadout);
+      const hash = window.location.hash.replace("#", "") as ViewId;
+      if (NAVIGATION.some((item) => item.id === hash)) setView(hash);
+      const nextLevel = clampLevel(saved?.level ?? DEFAULT_LEVEL);
+      setLevel(nextLevel);
+      setDistance(
+        clamp(saved?.distance ?? DEFAULT_DISTANCE, 10, 250, DEFAULT_DISTANCE),
+      );
+      setMagicLevel(
+        clamp(
+          saved?.magicLevel ?? DEFAULT_MAGIC_LEVEL,
+          0,
+          200,
+          DEFAULT_MAGIC_LEVEL,
+        ),
+      );
+      setCompleted(
+        Array.isArray(saved?.completed) ? saved.completed : [],
+      );
+      setLoadout(reconcileLoadout(nextLevel, saved?.loadout));
+      setSettings({
+        ...DEFAULT_SETTINGS,
+        ...(saved?.settings ?? {}),
+      });
       setHydrated(true);
     });
   }, []);
 
   useEffect(() => {
     if (!hydrated) return;
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ level, completed, loadout }),
-    );
-  }, [completed, hydrated, level, loadout]);
+    try {
+      window.localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          level,
+          distance,
+          magicLevel,
+          completed,
+          loadout,
+          settings,
+        }),
+      );
+    } catch {
+      // Persistence is optional.
+    }
+  }, [
+    completed,
+    distance,
+    hydrated,
+    level,
+    loadout,
+    magicLevel,
+    settings,
+  ]);
 
+  useEffect(() => {
+    function handleHistory() {
+      const hash = window.location.hash.replace("#", "") as ViewId;
+      if (NAVIGATION.some((item) => item.id === hash)) setView(hash);
+    }
+
+    window.addEventListener("popstate", handleHistory);
+    return () => window.removeEventListener("popstate", handleHistory);
+  }, []);
+
+  const equipped = useMemo(
+    () =>
+      SLOT_ORDER.map((slot) => itemById(loadout[slot])).filter(
+        Boolean,
+      ) as Item[],
+    [loadout],
+  );
+  const stats = useMemo(
+    () =>
+      calculateCharacterStats({
+        level,
+        distance,
+        magic: magicLevel,
+        items: equipped,
+      }),
+    [distance, equipped, level, magicLevel],
+  );
+  const combat = useMemo(
+    () => combatSummary(level, stats, loadout, settings),
+    [level, loadout, settings, stats],
+  );
   const currentBand = useMemo(() => bandForLevel(level), [level]);
-  const currentNav = NAVIGATION.find((item) => item.id === view)!;
 
   function navigate(next: ViewId) {
     setView(next);
+    window.history.pushState(null, "", `#${next}`);
     window.scrollTo({ top: 0, behavior: "smooth" });
+    window.requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>("[data-view-title]")?.focus();
+    });
+  }
+
+  function changeLevel(nextValue: number) {
+    const nextLevel = clampLevel(nextValue);
+    setLevel(nextLevel);
+    setLoadout((current) => {
+      const next = reconcileLoadout(nextLevel, current);
+      if (!sameLoadout(current, next)) {
+        setNotice(
+          "Seu set foi ajustado automaticamente para respeitar o novo level.",
+        );
+      }
+      return next;
+    });
+  }
+
+  function equip(item: Item) {
+    if (item.minLevel > level) return;
+    setLoadout((current) =>
+      reconcileLoadout(level, { ...current, [item.slot]: item.id }),
+    );
+    setNotice(`${item.name} foi equipado.`);
+  }
+
+  function resetLoadout() {
+    setLoadout(suggestedLoadout(level));
+    setNotice("Aplicamos uma base simples para o seu level.");
+  }
+
+  function applyContext(context: BisContext) {
+    const next = { ...loadout };
+    for (const [slot, ids] of Object.entries(context.slots) as Array<
+      [EquipmentSlot, readonly string[]]
+    >) {
+      const eligible = ids
+        .map((id) => itemById(id))
+        .find((item) => item && item.minLevel <= level);
+      if (eligible) next[slot] = eligible.id;
+    }
+    setLoadout(reconcileLoadout(level, next));
+    setNotice(`Preset “${context.label}” aplicado ao que seu level permite.`);
   }
 
   function toggleCompleted(id: string) {
@@ -422,423 +581,1036 @@ export default function RoyalPathApp() {
         Ir para o conteúdo
       </a>
 
-      <aside className="sidebar" aria-label="Navegação principal">
-        <div className="brand">
-          <div className="brand-mark" aria-hidden="true">
-            <span>R</span>
-          </div>
-          <div>
-            <div className="brand-name">
-              Royal<em>Path</em>
-            </div>
-            <span className="brand-subtitle">Royal Paladin Guide</span>
-          </div>
-        </div>
+      <header className="site-header">
+        <div className="header-inner">
+          <button
+            type="button"
+            className="brand"
+            onClick={() => navigate("inicio")}
+            aria-label="RoyalPath — ir para o início"
+          >
+            <span className="brand-mark" aria-hidden="true">
+              RP
+            </span>
+            <span className="brand-copy">
+              <strong>RoyalPath</strong>
+              <small>Guia Royal Paladin</small>
+            </span>
+          </button>
 
-        <nav className="side-nav">
-          {NAVIGATION.map((item) => (
-            <button
-              className="nav-button"
-              type="button"
-              key={item.id}
-              onClick={() => navigate(item.id)}
-              aria-current={view === item.id ? "page" : undefined}
-            >
-              <span className="nav-icon" aria-hidden="true">
-                {item.icon}
-              </span>
-              <span className="nav-label">{item.label}</span>
-              {item.kicker ? (
-                <span className="nav-kicker">{item.kicker}</span>
-              ) : null}
-            </button>
-          ))}
-        </nav>
+          <nav className="desktop-nav" aria-label="Navegação principal">
+            {NAVIGATION.map((item) => (
+              <a
+                href={`#${item.id}`}
+                key={item.id}
+                aria-current={view === item.id ? "page" : undefined}
+                onClick={(event) => {
+                  event.preventDefault();
+                  navigate(item.id);
+                }}
+              >
+                {item.label}
+              </a>
+            ))}
+          </nav>
 
-        <div className="sidebar-note">
-          <strong>Revisão viva · jul 2026</strong>
-          Baseado em notas oficiais do patch e referências comunitárias atuais.
-          Cada recomendação mostra sua fonte.
-        </div>
-      </aside>
-
-      <div className="main-shell">
-        <header className="topbar">
-          <div className="topbar-copy">
-            <p className="eyebrow">{currentNav.eyebrow}</p>
-            <h1 className="topbar-title">{currentNav.title}</h1>
-          </div>
-          <div className="level-control">
-            <label htmlFor="character-level">Meu level</label>
+          <label className="header-level" htmlFor="character-level">
+            <span>Meu level</span>
             <input
               id="character-level"
-              aria-label="Level do personagem"
               type="number"
               min={8}
               max={2500}
               value={level}
-              onChange={(event) => setLevel(clampLevel(event.target.valueAsNumber))}
+              onChange={(event) => changeLevel(event.target.valueAsNumber)}
             />
+          </label>
+        </div>
+      </header>
+
+      <main className="site-frame" id="conteudo" tabIndex={-1}>
+        {notice ? (
+          <div className="status-message" role="status">
+            <span aria-hidden="true">✓</span>
+            {notice}
+            <button
+              type="button"
+              onClick={() => setNotice("")}
+              aria-label="Fechar aviso"
+            >
+              ×
+            </button>
           </div>
-        </header>
+        ) : null}
 
-        <main className="content" id="conteudo" tabIndex={-1}>
-          {view === "agora" ? (
-            <DashboardView
-              level={level}
-              band={currentBand}
-              completed={completed}
-              toggleCompleted={toggleCompleted}
-              navigate={navigate}
-            />
-          ) : null}
-          {view === "roadmap" ? (
-            <RoadmapView
-              level={level}
-              completed={completed}
-              toggleCompleted={toggleCompleted}
-            />
-          ) : null}
-          {view === "hunts" ? <HuntsView level={level} /> : null}
-          {view === "arsenal" ? (
-            <ArsenalView
-              level={level}
-              loadout={loadout}
-              setLoadout={setLoadout}
-            />
-          ) : null}
-          {view === "academia" ? <AcademyView /> : null}
-          {view === "simulador" ? (
-            <SimulatorView
-              level={level}
-              loadout={loadout}
-              setLoadout={setLoadout}
-            />
-          ) : null}
+        {view === "inicio" ? (
+          <DashboardView
+            level={level}
+            distance={distance}
+            magicLevel={magicLevel}
+            stats={stats}
+            combat={combat}
+            band={currentBand}
+            setLevel={changeLevel}
+            setDistance={setDistance}
+            setMagicLevel={setMagicLevel}
+            navigate={navigate}
+          />
+        ) : null}
 
-          <Disclosure />
-          <Footer />
-        </main>
-      </div>
+        {view === "arsenal" ? (
+          <ArsenalView
+            level={level}
+            loadout={loadout}
+            stats={stats}
+            combat={combat}
+            equip={equip}
+            resetLoadout={resetLoadout}
+            applyContext={applyContext}
+          />
+        ) : null}
+
+        {view === "simulador" ? (
+          <SimulatorView
+            level={level}
+            distance={distance}
+            magicLevel={magicLevel}
+            loadout={loadout}
+            stats={stats}
+            combat={combat}
+            settings={settings}
+            setLevel={changeLevel}
+            setDistance={setDistance}
+            setMagicLevel={setMagicLevel}
+            setSettings={setSettings}
+            navigate={navigate}
+          />
+        ) : null}
+
+        {view === "hunts" ? <HuntsView level={level} /> : null}
+
+        {view === "jornada" ? (
+          <JourneyView
+            level={level}
+            completed={completed}
+            toggleCompleted={toggleCompleted}
+          />
+        ) : null}
+
+        <Disclosure />
+        <Footer />
+      </main>
 
       <nav className="mobile-nav" aria-label="Navegação móvel">
         {NAVIGATION.map((item) => (
-          <button
-            type="button"
+          <a
+            href={`#${item.id}`}
             key={item.id}
-            onClick={() => navigate(item.id)}
             aria-current={view === item.id ? "page" : undefined}
-            aria-label={item.label}
+            onClick={(event) => {
+              event.preventDefault();
+              navigate(item.id);
+            }}
           >
-            <span className="nav-icon" aria-hidden="true">
-              {item.icon}
-            </span>
-            <span className="nav-label">{item.mobileLabel}</span>
-          </button>
+            <span aria-hidden="true">{item.marker}</span>
+            {item.shortLabel}
+          </a>
         ))}
       </nav>
     </div>
   );
 }
 
-function DashboardView({
+function ProfilePanel({
   level,
-  band,
-  completed,
-  toggleCompleted,
-  navigate,
+  distance,
+  magicLevel,
+  setLevel,
+  setDistance,
+  setMagicLevel,
+  compact = false,
 }: {
   level: number;
-  band: UiBand;
-  completed: readonly string[];
-  toggleCompleted: (id: string) => void;
-  navigate: (view: ViewId) => void;
+  distance: number;
+  magicLevel: number;
+  setLevel: (value: number) => void;
+  setDistance: (value: number) => void;
+  setMagicLevel: (value: number) => void;
+  compact?: boolean;
 }) {
-  const nextMilestones = milestones
-    .filter((milestone) => milestone.level >= Math.max(8, level - 5))
-    .slice(0, 4);
-  const available = hunts.filter((hunt) => hunt.minLevel <= level);
-  const safeHunts = available.filter((hunt) => level >= hunt.minLevel + 20);
-  const unlocked = milestones.filter((milestone) => milestone.level <= level);
-  const nextMilestone = milestones.find((milestone) => milestone.level > level);
-
   return (
-    <section className="view" aria-labelledby="dashboard-title">
-      <div className="hero-grid">
-        <article className="hero-card">
-          <p className="eyebrow">Bem-vindo à sua jornada</p>
-          <h2 id="dashboard-title">
-            Do primeiro arco ao <span>endgame</span>, uma decisão por vez.
-          </h2>
-          <p>
-            O RoyalPath traduz o caminho do Royal Paladin em metas práticas.
-            Ajuste seu level, veja o que importa agora e valide cada passo nas
-            fontes — sem fingir que existe um único set perfeito.
-          </p>
-          <div className="hero-actions">
-            <button
-              type="button"
-              className="button button-primary"
-              onClick={() => navigate("roadmap")}
-            >
-              Ver minha rota <span aria-hidden="true">→</span>
-            </button>
-            <button
-              type="button"
-              className="button button-ghost"
-              onClick={() => navigate("simulador")}
-            >
-              Abrir simulador
-            </button>
-          </div>
-        </article>
-
-        <article className="panel now-card">
-          <span className="small-label">Fase atual</span>
-          <div className="level-orb" aria-label={`Level ${level}`}>
-            {level}
-          </div>
-          <h3>{band.title}</h3>
-          <p>{band.focus}</p>
-          <div className="now-meta">
-            <span className="chip chip-gold">{band.levelLabel}</span>
-            <span className="chip chip-blue">
-              {nextMilestone
-                ? `Próximo marco: ${nextMilestone.level}`
-                : "Endgame"}
-            </span>
-          </div>
-        </article>
-      </div>
-
-      <div className="stats-grid" aria-label="Resumo da jornada">
-        <div className="stat-card">
-          <span className="small-label">Marcos liberados</span>
-          <div className="stat-value">
-            {unlocked.length}/{milestones.length}
-          </div>
-          <div className="stat-note">contabilizados pelo seu level</div>
-        </div>
-        <div className="stat-card">
-          <span className="small-label">Hunts acessíveis</span>
-          <div className="stat-value">{available.length}</div>
-          <div className="stat-note">nível comunitário, não garantia</div>
-        </div>
-        <div className="stat-card">
-          <span className="small-label">Margem iniciante</span>
-          <div className="stat-value">{safeHunts.length}</div>
-          <div className="stat-note">mínimo da hunt +20 níveis</div>
-        </div>
-        <div className="stat-card">
-          <span className="small-label">Metas marcadas</span>
-          <div className="stat-value">{completed.length}</div>
-          <div className="stat-note">salvas apenas neste dispositivo</div>
+    <section className={`profile-panel${compact ? " is-compact" : ""}`}>
+      <div className="panel-heading">
+        <div>
+          <span className="step-kicker">Passo 1</span>
+          <h2>Conte sobre seu personagem</h2>
+          <p>Use os valores que aparecem na janela de skills do jogo.</p>
         </div>
       </div>
 
-      <div className="two-column">
-        <article className="panel">
-          <div className="panel-header">
-            <div>
-              <h3>Próximas metas</h3>
-              <p>Uma checklist curta para não se perder no caminho.</p>
-            </div>
-            <button
-              type="button"
-              className="button button-small"
-              onClick={() => navigate("roadmap")}
-            >
-              Roadmap completo
-            </button>
-          </div>
-          <div className="objective-list">
-            {nextMilestones.map((milestone) => {
-              const done = completed.includes(milestone.id);
-              return (
-                <div
-                  className={`objective${done ? " is-done" : ""}`}
-                  key={milestone.id}
-                >
-                  <button
-                    className="objective-check"
-                    type="button"
-                    onClick={() => toggleCompleted(milestone.id)}
-                    aria-label={
-                      done
-                        ? `Desmarcar ${milestone.title}`
-                        : `Marcar ${milestone.title} como concluído`
-                    }
-                    aria-pressed={done}
-                  >
-                    {done ? "✓" : ""}
-                  </button>
-                  <div>
-                    <span className="objective-title">{milestone.title}</span>
-                    <span className="objective-detail">
-                      {milestone.summary}
-                    </span>
-                  </div>
-                  <span className="objective-level">
-                    Lv {milestone.level}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </article>
-
-        <aside className="panel">
-          <div className="panel-header">
-            <div>
-              <h3>Fontes em destaque</h3>
-              <p>Abra a referência antes de um investimento grande.</p>
-            </div>
-          </div>
-          <div className="source-list">
-            {sources.slice(0, 6).map((source) => (
-              <a
-                className="source-link"
-                href={source.url}
-                target="_blank"
-                rel="noreferrer"
-                key={source.id}
-              >
-                <span>{source.name}</span>
-                <span aria-hidden="true">↗</span>
-              </a>
-            ))}
-          </div>
-        </aside>
+      <div className="profile-fields">
+        <label>
+          <span>Level</span>
+          <input
+            type="number"
+            min={8}
+            max={2500}
+            value={level}
+            onChange={(event) => setLevel(event.target.valueAsNumber)}
+          />
+          <small>Define vida, mana e itens disponíveis.</small>
+        </label>
+        <label>
+          <span>Distance</span>
+          <input
+            type="number"
+            min={10}
+            max={250}
+            value={distance}
+            onChange={(event) =>
+              setDistance(
+                clamp(event.target.valueAsNumber, 10, 250, DEFAULT_DISTANCE),
+              )
+            }
+          />
+          <small>Seu skill base, antes dos equipamentos.</small>
+        </label>
+        <label>
+          <span>Magic level</span>
+          <input
+            type="number"
+            min={0}
+            max={200}
+            value={magicLevel}
+            onChange={(event) =>
+              setMagicLevel(
+                clamp(
+                  event.target.valueAsNumber,
+                  0,
+                  200,
+                  DEFAULT_MAGIC_LEVEL,
+                ),
+              )
+            }
+          />
+          <small>Seu ML base, antes dos bônus do set.</small>
+        </label>
       </div>
     </section>
   );
 }
 
-function RoadmapView({
+function StatsSummary({
+  stats,
+  combat,
+  compact = false,
+}: {
+  stats: CharacterStats;
+  combat: CombatSummary;
+  compact?: boolean;
+}) {
+  const physical = stats.protections.physical ?? 0;
+  const dps = combat.compatible ? Math.round(combat.expectedDps) : 0;
+
+  return (
+    <section
+      className={`stats-summary${compact ? " is-compact" : ""}`}
+      aria-label="Resumo do personagem"
+    >
+      <article className="summary-card summary-health">
+        <span className="summary-icon" aria-hidden="true">
+          ♥
+        </span>
+        <div>
+          <small>Vida máxima</small>
+          <strong>{stats.hp.toLocaleString("pt-BR")}</strong>
+          <span>pelo seu level</span>
+        </div>
+      </article>
+      <article className="summary-card summary-mana">
+        <span className="summary-icon" aria-hidden="true">
+          ◆
+        </span>
+        <div>
+          <small>Mana máxima</small>
+          <strong>{stats.mana.toLocaleString("pt-BR")}</strong>
+          <span>pelo seu level</span>
+        </div>
+      </article>
+      <article className="summary-card summary-dps">
+        <span className="summary-icon" aria-hidden="true">
+          ✦
+        </span>
+        <div>
+          <small>DPS esperado</small>
+          <strong>{dps.toLocaleString("pt-BR")}</strong>
+          <span>{combat.rotationLabel}</span>
+        </div>
+      </article>
+      <article className="summary-card summary-defense">
+        <span className="summary-icon" aria-hidden="true">
+          ◈
+        </span>
+        <div>
+          <small>Defesa do set</small>
+          <strong>{stats.armor} arm</strong>
+          <span>
+            {physical
+              ? `${formatProtection(physical)} físico`
+              : "sem proteção % física"}
+          </span>
+        </div>
+      </article>
+    </section>
+  );
+}
+
+function DashboardView({
   level,
-  completed,
-  toggleCompleted,
+  distance,
+  magicLevel,
+  stats,
+  combat,
+  band,
+  setLevel,
+  setDistance,
+  setMagicLevel,
+  navigate,
 }: {
   level: number;
-  completed: readonly string[];
-  toggleCompleted: (id: string) => void;
+  distance: number;
+  magicLevel: number;
+  stats: CharacterStats;
+  combat: CombatSummary;
+  band: ProgressionBand;
+  setLevel: (value: number) => void;
+  setDistance: (value: number) => void;
+  setMagicLevel: (value: number) => void;
+  navigate: (view: ViewId) => void;
 }) {
+  const nextMilestone = MILESTONES.find((milestone) => milestone.level > level);
+  const safeHunts = HUNTS.filter((hunt) => level >= hunt.minLevel + 20);
+
   return (
-    <section className="view" aria-labelledby="roadmap-title">
-      <div className="section-heading">
-        <div>
-          <p className="eyebrow">Sua rota, sem atalhos mágicos</p>
-          <h1 id="roadmap-title">Level 8 ao 1000+</h1>
-          <p>
-            Faixas de decisão, não promessas de segurança. Para a primeira
-            visita a uma hunt, reduza os pulls e considere uma margem de 20–50
-            levels.
+    <section className="view" aria-labelledby="inicio-title">
+      <div className="hero">
+        <div className="hero-copy">
+          <p className="eyebrow">Guia para quem está começando</p>
+          <h1 id="inicio-title" data-view-title tabIndex={-1}>
+            Seu Royal Paladin, <span>sem complicação.</span>
+          </h1>
+          <p className="hero-text">
+            Informe level e skills, escolha os itens que você usa e entenda o
+            resultado em números simples. Vida, mana, dano e proteção ficam no
+            mesmo lugar.
           </p>
+          <div className="hero-actions">
+            <button
+              className="button button-primary"
+              type="button"
+              onClick={() => navigate("arsenal")}
+            >
+              Montar meu set
+            </button>
+            <button
+              className="button button-secondary"
+              type="button"
+              onClick={() => navigate("simulador")}
+            >
+              Ver o simulador
+            </button>
+          </div>
         </div>
-        <span className="review-stamp">Revisado · 28 jul 2026</span>
+        <aside className="hero-stage" aria-label="Sua fase atual">
+          <span className="stage-level">Level {level}</span>
+          <small>Você está na fase</small>
+          <h2>{band.title}</h2>
+          <p>{band.focus}</p>
+          <div className="stage-next">
+            <span>Próximo marco</span>
+            <strong>
+              {nextMilestone
+                ? `Lv ${nextMilestone.level} · ${nextMilestone.title}`
+                : "Continue refinando seus sets"}
+            </strong>
+          </div>
+        </aside>
       </div>
 
-      <div className="roadmap">
-        {progressionBands.map((band) => {
-          const isCurrent =
-            level >= band.minLevel &&
-            (band.maxLevel === null || level <= band.maxLevel);
-          const isPast = band.maxLevel !== null && level > band.maxLevel;
-          const related = milestones.filter(
-            (milestone) =>
-              milestone.level >= band.minLevel &&
-              (band.maxLevel === null || milestone.level <= band.maxLevel),
-          );
-          const bandDone =
-            related.length > 0 &&
-            related.every((milestone) => completed.includes(milestone.id));
+      <ProfilePanel
+        level={level}
+        distance={distance}
+        magicLevel={magicLevel}
+        setLevel={setLevel}
+        setDistance={setDistance}
+        setMagicLevel={setMagicLevel}
+      />
 
+      <div className="section-intro section-intro-inline">
+        <div>
+          <span className="step-kicker">Passos 2 e 3</span>
+          <h2>Veja o que seu personagem entrega agora</h2>
+        </div>
+        <button
+          className="text-button"
+          type="button"
+          onClick={() => navigate("arsenal")}
+        >
+          Conferir equipamentos →
+        </button>
+      </div>
+      <StatsSummary stats={stats} combat={combat} />
+
+      {!combat.compatible ? (
+        <div className="beginner-alert" role="alert">
+          <strong>Seu dano ainda não pode ser estimado.</strong>
+          {combat.compatibilityMessage} Abra o Arsenal para corrigir.
+        </div>
+      ) : null}
+
+      <div className="home-grid">
+        <article className="content-card next-action-card">
+          <span className="card-label">Faça isto agora</span>
+          <h2>{nextMilestone?.title ?? "Aprimore um set por contexto"}</h2>
+          <p>
+            {nextMilestone?.summary ??
+              "Seu level já passou pelos marcos principais. Compare proteção e sustain antes de comprar."}
+          </p>
+          <ul className="clean-list">
+            {(nextMilestone?.actions ?? band.goals).slice(0, 3).map((action) => (
+              <li key={action}>{action}</li>
+            ))}
+          </ul>
+          <button
+            className="button button-secondary"
+            type="button"
+            onClick={() => navigate("jornada")}
+          >
+            Abrir minha jornada
+          </button>
+        </article>
+
+        <article className="content-card">
+          <span className="card-label">Hunts com margem</span>
+          <h2>{safeHunts.length} opções para começar com calma</h2>
+          <p>
+            A margem iniciante considera o level sugerido pela comunidade mais
+            20 levels. Ainda não é garantia de segurança.
+          </p>
+          <div className="mini-hunts">
+            {safeHunts.slice(-3).reverse().map((hunt) => (
+              <div key={hunt.id}>
+                <strong>{hunt.name}</strong>
+                <span>Lv {hunt.minLevel}+ · {hunt.risk}</span>
+              </div>
+            ))}
+            {!safeHunts.length ? (
+              <p>
+                No início, prefira criaturas isoladas, caminho de saída e
+                supplies baratos.
+              </p>
+            ) : null}
+          </div>
+          <button
+            className="text-button"
+            type="button"
+            onClick={() => navigate("hunts")}
+          >
+            Ver onde caçar →
+          </button>
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function EquipmentBoard({
+  loadout,
+  selectedSlot,
+  onSelectSlot,
+}: {
+  loadout: Partial<Record<EquipmentSlot, string>>;
+  selectedSlot?: EquipmentSlot;
+  onSelectSlot?: (slot: EquipmentSlot) => void;
+}) {
+  return (
+    <div className="equipment-board">
+      <div className="equipment-board-heading">
+        <div>
+          <span className="card-label">Equipado agora</span>
+          <h2>Seu set</h2>
+        </div>
+        <span className="save-note">Salvo neste dispositivo</span>
+      </div>
+      <div className="equipment-grid" aria-label="Equipamentos selecionados">
+        {SLOT_ORDER.map((slot) => {
+          const item = itemById(loadout[slot]);
           return (
-            <article
-              className={`milestone-card${isCurrent ? " is-current" : ""}${
-                isPast ? " is-past" : ""
-              }`}
-              key={band.id}
+            <button
+              type="button"
+              className={`equipment-slot${
+                selectedSlot === slot ? " is-selected" : ""
+              }${item ? " is-filled" : ""}`}
+              key={slot}
+              onClick={() => onSelectSlot?.(slot)}
+              disabled={!onSelectSlot}
+              aria-pressed={
+                onSelectSlot ? selectedSlot === slot : undefined
+              }
+              aria-label={`${SLOT_LABELS[slot]}: ${item?.name ?? "vazio"}`}
             >
-              <div className="range-badge">{band.levelLabel}</div>
-              <div>
-                <h3>{band.title}</h3>
-                <p>{band.focus}</p>
-                <div className="milestone-details">
-                  {band.goals.slice(0, 2).map((goal) => (
-                    <span className="chip chip-blue" key={goal}>
-                      {goal}
-                    </span>
-                  ))}
-                  {band.loadout.slice(0, 2).map((item) => (
-                    <span className="chip chip-gold" key={item}>
-                      {item}
-                    </span>
-                  ))}
-                  <span className="chip">{band.rotation}</span>
-                </div>
-              </div>
-              <div className="milestone-action">
-                {related.length ? (
-                  <button
-                    type="button"
-                    className="button button-small"
-                    onClick={() =>
-                      related.forEach((milestone) => {
-                        if (bandDone || !completed.includes(milestone.id)) {
-                          toggleCompleted(milestone.id);
-                        }
-                      })
-                    }
-                    aria-pressed={bandDone}
-                  >
-                    {bandDone ? "Concluído ✓" : "Marcar fase"}
-                  </button>
-                ) : (
-                  <span className="chip">Especialização</span>
-                )}
-              </div>
-            </article>
+              {item ? (
+                <ItemSprite item={item} size="large" />
+              ) : (
+                <span className="empty-sprite" aria-hidden="true">
+                  +
+                </span>
+              )}
+              <span>
+                <small>{SLOT_LABELS[slot]}</small>
+                <strong>{item?.name ?? "Vazio"}</strong>
+              </span>
+            </button>
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function ProtectionPanel({ stats }: { stats: CharacterStats }) {
+  const entries = protectionEntries(stats);
+
+  return (
+    <article className="content-card protection-panel">
+      <div className="panel-heading">
+        <div>
+          <span className="card-label">Defesas</span>
+          <h2>O que o set protege</h2>
+        </div>
+        <span className="armor-badge">{stats.armor} armor</span>
+      </div>
+      <p>
+        A armor reduz dano físico em uma faixa aproximada de{" "}
+        <strong>
+          {stats.armorReduction.min}–{stats.armorReduction.max}
+        </strong>{" "}
+        por hit que atravessa a defesa.
+      </p>
+      <div className="protection-list">
+        {entries.map(([key, value]) => (
+          <div
+            className={`protection-row${value < 0 ? " is-negative" : ""}`}
+            key={key}
+          >
+            <span>{PROTECTION_LABELS[key] ?? key}</span>
+            <strong>{formatProtection(value)}</strong>
+          </div>
+        ))}
+        {!entries.length ? (
+          <div className="empty-copy">
+            Este set não tem proteções percentuais catalogadas.
+          </div>
+        ) : null}
+      </div>
+      <small className="helper-copy">
+        Proteções de várias peças são compostas com redução progressiva, não
+        apenas somadas.
+      </small>
+    </article>
+  );
+}
+
+function ArsenalView({
+  level,
+  loadout,
+  stats,
+  combat,
+  equip,
+  resetLoadout,
+  applyContext,
+}: {
+  level: number;
+  loadout: Partial<Record<EquipmentSlot, string>>;
+  stats: CharacterStats;
+  combat: CombatSummary;
+  equip: (item: Item) => void;
+  resetLoadout: () => void;
+  applyContext: (context: BisContext) => void;
+}) {
+  const [slot, setSlot] = useState<EquipmentSlot>("weapon");
+  const [query, setQuery] = useState("");
+  const currentWeapon = itemById(loadout.weapon);
+  const contexts = BIS_CONTEXTS.filter(
+    (context) => context.minLevel <= level,
+  ).sort((a, b) => b.minLevel - a.minLevel);
+
+  const choices = ITEMS.filter((item) => {
+    if (item.slot !== slot || item.minLevel > level) return false;
+    if (
+      slot === "ammo" &&
+      weaponKind(currentWeapon) === "bow" &&
+      ammoKind(item) !== "arrow"
+    ) {
+      return false;
+    }
+    if (
+      slot === "ammo" &&
+      weaponKind(currentWeapon) === "crossbow" &&
+      ammoKind(item) !== "bolt"
+    ) {
+      return false;
+    }
+    const normalized = query.trim().toLocaleLowerCase("pt-BR");
+    return (
+      !normalized ||
+      `${item.name} ${item.summary} ${item.useCase.join(" ")}`
+        .toLocaleLowerCase("pt-BR")
+        .includes(normalized)
+    );
+  }).sort((a, b) => b.minLevel - a.minLevel || a.name.localeCompare(b.name));
+
+  return (
+    <section className="view" aria-labelledby="arsenal-title">
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">Passo 2 · escolha visual</p>
+          <h1 id="arsenal-title" data-view-title tabIndex={-1}>
+            Monte seu Arsenal
+          </h1>
+          <p>
+            Clique em um slot, reconheça o item pelo sprite e equipe uma opção
+            liberada para o seu level.
+          </p>
+        </div>
+        <button
+          className="button button-secondary"
+          type="button"
+          onClick={resetLoadout}
+        >
+          Sugerir set do level
+        </button>
+      </div>
+
+      <StatsSummary stats={stats} combat={combat} compact />
+
+      <div className="arsenal-layout">
+        <EquipmentBoard
+          loadout={loadout}
+          selectedSlot={slot}
+          onSelectSlot={setSlot}
+        />
+
+        <div className="item-picker">
+          <div className="item-picker-heading">
+            <div>
+              <span className="card-label">Trocar item</span>
+              <h2>{SLOT_LABELS[slot]}</h2>
+              <p>{choices.length} opções disponíveis no level {level}.</p>
+            </div>
+            <label className="item-search">
+              <span className="sr-only">Buscar item</span>
+              <input
+                type="search"
+                placeholder="Buscar item…"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            </label>
+          </div>
+
+          <div className="item-list">
+            {choices.map((item) => {
+              const selected = loadout[item.slot] === item.id;
+              return (
+                <button
+                  className={`item-option${selected ? " is-equipped" : ""}`}
+                  type="button"
+                  key={item.id}
+                  onClick={() => equip(item)}
+                  aria-pressed={selected}
+                >
+                  <ItemSprite item={item} size="large" />
+                  <span className="item-option-copy">
+                    <span className="item-name-row">
+                      <strong>{item.name}</strong>
+                      <small>Lv {item.minLevel || 8}</small>
+                    </span>
+                    <span className="item-stat-row">
+                      {itemStats(item).map((stat) => (
+                        <span key={stat}>{stat}</span>
+                      ))}
+                    </span>
+                    <small>{item.summary}</small>
+                  </span>
+                  <span className="equip-action">
+                    {selected ? "Equipado" : "Equipar"}
+                  </span>
+                </button>
+              );
+            })}
+            {!choices.length ? (
+              <div className="empty-state">
+                Nenhum item encontrado para este slot e busca.
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      <div className="arsenal-bottom-grid">
+        <ProtectionPanel stats={stats} />
+
+        <article className="content-card preset-card">
+          <span className="card-label">Opcional</span>
+          <h2>Presets por objetivo</h2>
+          <p>
+            Eles trocam apenas os itens catalogados e liberados no seu level.
+            Use como ponto de partida, não como verdade absoluta.
+          </p>
+          <div className="preset-list">
+            {contexts.slice(0, 4).map((context) => (
+              <button
+                type="button"
+                key={context.id}
+                onClick={() => applyContext(context)}
+              >
+                <span>
+                  <strong>{context.label}</strong>
+                  <small>{context.goal}</small>
+                </span>
+                <span aria-hidden="true">→</span>
+              </button>
+            ))}
+            {!contexts.length ? (
+              <div className="empty-copy">
+                Os presets começam no level 200. Até lá, use a sugestão simples
+                do seu level.
+              </div>
+            ) : null}
+          </div>
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function SimulatorView({
+  level,
+  distance,
+  magicLevel,
+  loadout,
+  stats,
+  combat,
+  settings,
+  setLevel,
+  setDistance,
+  setMagicLevel,
+  setSettings,
+  navigate,
+}: {
+  level: number;
+  distance: number;
+  magicLevel: number;
+  loadout: Partial<Record<EquipmentSlot, string>>;
+  stats: CharacterStats;
+  combat: CombatSummary;
+  settings: CombatSettings;
+  setLevel: (value: number) => void;
+  setDistance: (value: number) => void;
+  setMagicLevel: (value: number) => void;
+  setSettings: (settings: CombatSettings) => void;
+  navigate: (view: ViewId) => void;
+}) {
+  const protections = protectionEntries(stats);
+
+  function patchSettings(patch: Partial<CombatSettings>) {
+    setSettings({ ...settings, ...patch });
+  }
+
+  return (
+    <section className="view" aria-labelledby="simulator-title">
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">Passo 3 · resultado simples</p>
+          <h1 id="simulator-title" data-view-title tabIndex={-1}>
+            Entenda seu personagem
+          </h1>
+          <p>
+            O resumo usa seu level, skills e Arsenal. Comece pelos quatro
+            números principais; abra os ajustes só quando precisar.
+          </p>
+        </div>
+        <span className="model-badge">Estimativa comparativa</span>
+      </div>
+
+      <StatsSummary stats={stats} combat={combat} />
+
+      {!combat.compatible ? (
+        <div className="beginner-alert" role="alert">
+          <strong>O loadout precisa de atenção.</strong>
+          {combat.compatibilityMessage}
+          <button type="button" onClick={() => navigate("arsenal")}>
+            Corrigir no Arsenal
+          </button>
+        </div>
+      ) : null}
+
+      <div className="simulator-simple-grid">
+        <ProfilePanel
+          level={level}
+          distance={distance}
+          magicLevel={magicLevel}
+          setLevel={setLevel}
+          setDistance={setDistance}
+          setMagicLevel={setMagicLevel}
+          compact
+        />
+
+        <article className="content-card result-explainer">
+          <div className="panel-heading">
+            <div>
+              <span className="card-label">Como ler o DPS</span>
+              <h2>{combat.rotationLabel}</h2>
+            </div>
+            <strong className="big-dps">
+              {combat.compatible
+                ? Math.round(combat.expectedDps).toLocaleString("pt-BR")
+                : "—"}
+              <small>DPS</small>
+            </strong>
+          </div>
+          <div className="simple-result-grid">
+            <div>
+              <span>Autoattack médio</span>
+              <strong>
+                {Math.round(
+                  combat.autoAttack.expectedDamagePerAttempt,
+                ).toLocaleString("pt-BR")}
+              </strong>
+            </div>
+            <div>
+              <span>Distance com set</span>
+              <strong>{stats.distance.toFixed(0)}</strong>
+            </div>
+            <div>
+              <span>Magic level com set</span>
+              <strong>{stats.magic.toFixed(0)}</strong>
+            </div>
+            <div>
+              <span>Leech por ciclo</span>
+              <strong>
+                {combat.primaryTargetLeech.life} vida ·{" "}
+                {combat.primaryTargetLeech.mana} mana
+              </strong>
+            </div>
+          </div>
+          <p className="result-note">
+            É uma referência para comparar sets. Resistências, quantidade de
+            alvos, Wheel, charms, prey e execução real mudam o resultado.
+          </p>
+        </article>
+      </div>
+
+      <div className="simulator-detail-grid">
+        <article className="content-card loadout-preview">
+          <div className="panel-heading">
+            <div>
+              <span className="card-label">Itens usados no cálculo</span>
+              <h2>Arsenal atual</h2>
+            </div>
+            <button
+              className="text-button"
+              type="button"
+              onClick={() => navigate("arsenal")}
+            >
+              Trocar itens →
+            </button>
+          </div>
+          <div className="loadout-strip">
+            {SLOT_ORDER.map((slot) => {
+              const item = itemById(loadout[slot]);
+              return item ? (
+                <div key={slot} title={item.name}>
+                  <ItemSprite item={item} size="medium" />
+                  <small>{SLOT_LABELS[slot]}</small>
+                </div>
+              ) : null;
+            })}
+          </div>
+          <div className="protection-chips">
+            {protections.slice(0, 5).map(([key, value]) => (
+              <span key={key}>
+                {PROTECTION_LABELS[key] ?? key} {formatProtection(value)}
+              </span>
+            ))}
+          </div>
+        </article>
+
+        <ProtectionPanel stats={stats} />
+      </div>
+
+      <details className="advanced-panel">
+        <summary>
+          <span>
+            <strong>Ajustes opcionais</strong>
+            <small>Stance, resistência, imbuements e Forge</small>
+          </span>
+          <span aria-hidden="true">+</span>
+        </summary>
+        <div className="advanced-content">
+          <div className="advanced-grid">
+            <label>
+              <span>Stance</span>
+              <select
+                value={settings.stance}
+                disabled={level < 20}
+                onChange={(event) =>
+                  patchSettings({
+                    stance: event.target.value as PaladinStance,
+                  })
+                }
+              >
+                <option value="neutral">Sem stance</option>
+                <option value="sharpshooter">
+                  Sharpshooter · mais Distance
+                </option>
+                <option value="divine-defiance">
+                  Divine Defiance · mais Holy/Healing ML
+                </option>
+              </select>
+              <small>
+                {level < 20
+                  ? "Disponível após a promoção no level 20."
+                  : "Sharpshooter favorece dano; Defiance favorece holy e cura."}
+              </small>
+            </label>
+
+            <label>
+              <span>Resistência do alvo</span>
+              <div className="range-control">
+                <input
+                  type="range"
+                  min={-30}
+                  max={80}
+                  value={settings.resistance}
+                  onChange={(event) =>
+                    patchSettings({
+                      resistance: Number(event.target.value),
+                    })
+                  }
+                />
+                <strong>{settings.resistance}%</strong>
+              </div>
+              <small>Deixe em 0% se você não souber.</small>
+            </label>
+
+            <label>
+              <span>Forge tier da arma</span>
+              <select
+                value={settings.forgeTier}
+                onChange={(event) =>
+                  patchSettings({
+                    forgeTier: Number(event.target.value),
+                  })
+                }
+              >
+                {Array.from({ length: 11 }, (_, tier) => (
+                  <option value={tier} key={tier}>
+                    {tier === 0 ? "Sem tier" : `Tier ${tier}`}
+                  </option>
+                ))}
+              </select>
+              <small>Use o tier que aparece na sua arma.</small>
+            </label>
+          </div>
+
+          <div className="imbue-options">
+            <span>Imbuements ativos</span>
+            <div>
+              <button
+                type="button"
+                aria-pressed={settings.powerfulStrike}
+                onClick={() =>
+                  patchSettings({
+                    powerfulStrike: !settings.powerfulStrike,
+                  })
+                }
+              >
+                Powerful Strike
+              </button>
+              <button
+                type="button"
+                aria-pressed={settings.powerfulVamp}
+                onClick={() =>
+                  patchSettings({
+                    powerfulVamp: !settings.powerfulVamp,
+                  })
+                }
+              >
+                Vampirism 25%
+              </button>
+              <button
+                type="button"
+                aria-pressed={settings.powerfulVoid}
+                onClick={() =>
+                  patchSettings({
+                    powerfulVoid: !settings.powerfulVoid,
+                  })
+                }
+              >
+                Void 8%
+              </button>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <details className="method-panel">
+        <summary>Como esta estimativa é calculada?</summary>
+        <div>
+          <p>
+            O RoyalPath usa uma fórmula comunitária reversa para o ataque básico
+            e proxies transparentes para Caldera/Barrage. A rotação respeita o
+            level: só autoattack abaixo do 50, Caldera a partir do 50 e Divine
+            Barrage a partir do 70.
+          </p>
+          <code>Modelo {DAMAGE_MODEL_VERSION}</code>
+        </div>
+      </details>
     </section>
   );
 }
 
 function HuntsView({ level }: { level: number }) {
-  const [focus, setFocus] = useState<"leveling" | "farm" | "safe">(
-    "leveling",
-  );
+  const [focus, setFocus] = useState<"leveling" | "farm" | "safe">("safe");
   const [query, setQuery] = useState("");
   const [showAll, setShowAll] = useState(false);
 
   const visible = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase("pt-BR");
-    return hunts
-      .filter((hunt) => {
-        const matchesQuery =
-          !normalized ||
-          `${hunt.name} ${hunt.location} ${hunt.access} ${hunt.tips.join(" ")}`
-            .toLocaleLowerCase("pt-BR")
-            .includes(normalized);
-        const matchesLevel =
-          showAll ||
-          (focus === "safe"
-            ? level >= hunt.minLevel + 20
-            : hunt.minLevel <= level);
-        const matchesFocus =
-          focus === "safe" ||
-          hunt.focus.includes(focus) ||
-          hunt.focus.includes("equilibrada") ||
-          (focus === "leveling" && hunt.focus.includes("aprendizado"));
-        return matchesQuery && matchesLevel && matchesFocus;
-      })
-      .sort((a, b) => {
-        if (focus === "farm") return metricScore(b.loot) - metricScore(a.loot);
-        if (focus === "safe") return b.minLevel - a.minLevel;
-        return metricScore(b.xp) - metricScore(a.xp);
-      });
+    return HUNTS.filter((hunt) => {
+      const matchesQuery =
+        !normalized ||
+        `${hunt.name} ${hunt.location} ${hunt.access} ${hunt.tips.join(" ")}`
+          .toLocaleLowerCase("pt-BR")
+          .includes(normalized);
+      const matchesLevel =
+        showAll ||
+        (focus === "safe"
+          ? level >= hunt.minLevel + 20
+          : hunt.minLevel <= level);
+      const matchesFocus =
+        focus === "safe" ||
+        hunt.focus.includes(focus) ||
+        hunt.focus.includes("equilibrada") ||
+        (focus === "leveling" && hunt.focus.includes("aprendizado"));
+      return matchesQuery && matchesLevel && matchesFocus;
+    }).sort((left, right) => {
+      if (focus === "farm") return metricScore(right.loot) - metricScore(left.loot);
+      if (focus === "safe") return right.minLevel - left.minLevel;
+      return metricScore(right.xp) - metricScore(left.xp);
+    });
   }, [focus, level, query, showAll]);
 
   return (
@@ -846,28 +1618,28 @@ function HuntsView({ level }: { level: number }) {
       <div className="section-heading">
         <div>
           <p className="eyebrow">Escolha pelo objetivo</p>
-          <h1 id="hunts-title">Hunts que fazem sentido agora</h1>
+          <h1 id="hunts-title" data-view-title tabIndex={-1}>
+            Onde caçar
+          </h1>
           <p>
-            Raw XP e loot são testes comunitários pós-rebalance onde há
-            medição. Skills, stamina, prey, charms, rota, Market e lotação mudam
-            o resultado.
+            Comece pelo filtro “Mais tranquilo”. Level sugerido não é garantia:
+            entre devagar, teste poucos inimigos e marque a saída.
           </p>
         </div>
-        <span className="review-stamp">{visible.length} opções exibidas</span>
+        <span className="model-badge">{visible.length} opções</span>
       </div>
 
-      <div className="filters">
-        <div className="filter-group" aria-label="Objetivo da hunt">
+      <div className="hunt-filters">
+        <div className="segmented-control" aria-label="Objetivo da hunt">
           {(
             [
+              ["safe", "Mais tranquilo"],
               ["leveling", "Leveling"],
               ["farm", "Farm"],
-              ["safe", "Seguro para iniciante"],
             ] as const
           ).map(([id, label]) => (
             <button
               type="button"
-              className="filter-button"
               key={id}
               aria-pressed={focus === id}
               onClick={() => setFocus(id)}
@@ -876,85 +1648,71 @@ function HuntsView({ level }: { level: number }) {
             </button>
           ))}
         </div>
-        <label className="search-field">
-          <span aria-hidden="true">⌕</span>
+        <label className="hunt-search">
           <span className="sr-only">Buscar hunt</span>
           <input
             type="search"
-            placeholder="Buscar hunt, acesso ou dica…"
+            placeholder="Buscar hunt, cidade ou acesso…"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
         <button
+          className="filter-toggle"
           type="button"
-          className="filter-button"
           aria-pressed={showAll}
           onClick={() => setShowAll((current) => !current)}
         >
-          {showAll ? "Só no meu level" : "Ver todas"}
+          {showAll ? "Só para meu level" : "Ver futuras"}
         </button>
       </div>
 
-      <div className="callout callout-blue" style={{ marginBottom: 16 }}>
-        Nível sugerido pela comunidade — não é requisito nem garantia. Na
-        primeira visita, use pulls menores, proteção adequada e uma rota de
-        saída; “Seguro” aplica apenas uma margem simples de +20 levels.
+      <div className="beginner-note">
+        <strong>Como usamos “Mais tranquilo”:</strong> o personagem precisa
+        estar pelo menos 20 levels acima do mínimo comunitário. Skills, set e
+        experiência ainda fazem diferença.
       </div>
 
-      <div className="card-grid">
+      <div className="hunt-grid">
         {visible.map((hunt) => (
           <article className="hunt-card" key={hunt.id}>
-            <div className="card-topline">
-              <span className="level-tag">Level {hunt.minLevel}+</span>
+            <div className="hunt-topline">
+              <span>Level {hunt.minLevel}+</span>
               <span className={`risk ${riskClass(hunt.risk)}`}>
                 {hunt.risk}
               </span>
             </div>
-            <h3>{hunt.name}</h3>
+            <h2>{hunt.name}</h2>
             <p>{hunt.tips[0]}</p>
-            <div className="hunt-metrics">
-              <div className="metric">
-                <span>Raw XP observado</span>
+            <div className="hunt-numbers">
+              <div>
+                <small>XP observada</small>
                 <strong>{metric(hunt.xp)}</strong>
               </div>
-              <div className="metric">
-                <span>Loot observado</span>
+              <div>
+                <small>Loot observado</small>
                 <strong>{metric(hunt.loot)}</strong>
               </div>
             </div>
-            <div className="now-meta">
+            <div className="tag-row">
               {hunt.focus.map((item) => (
-                <span
-                  className={`chip ${
-                    item === "leveling" ? "chip-blue" : "chip-gold"
-                  }`}
-                  key={item}
-                >
-                  {parseFocusLabel(item)}
-                </span>
+                <span key={item}>{focusLabel(item)}</span>
               ))}
-              <span className="chip">{hunt.ammo}</span>
-              {hunt.access !== "Livre" ? (
-                <span className="chip chip-red">Acesso</span>
-              ) : null}
             </div>
-            <div className="card-footer">
-              <span className="source-anchor">{hunt.location}</span>
-              <a
-                className="source-anchor"
-                href={hunt.sourceUrl}
-                target="_blank"
-                rel="noreferrer"
-              >
-                {hunt.sourceName} ↗
+            <div className="hunt-tip">
+              <strong>Munição:</strong> {hunt.ammo}
+            </div>
+            <footer>
+              <span>{hunt.location}</span>
+              <a href={hunt.sourceUrl} target="_blank" rel="noreferrer">
+                Ver fonte ↗
               </a>
-            </div>
+            </footer>
           </article>
         ))}
         {!visible.length ? (
           <div className="empty-state">
-            Nenhuma hunt encontrada. Tente “Ver todas” ou ajuste a busca.
+            Nenhuma opção apareceu. Tente “Ver futuras” ou outra busca.
           </div>
         ) : null}
       </div>
@@ -962,707 +1720,265 @@ function HuntsView({ level }: { level: number }) {
   );
 }
 
-function Inventory({
-  loadout,
-  selectedSlot,
-  onSelectSlot,
+function JourneyView({
+  level,
+  completed,
+  toggleCompleted,
 }: {
-  loadout: Partial<Record<EquipmentSlot, string>>;
-  selectedSlot: EquipmentSlot;
-  onSelectSlot: (slot: EquipmentSlot) => void;
+  level: number;
+  completed: readonly string[];
+  toggleCompleted: (id: string) => void;
 }) {
-  const equipped = SLOT_ORDER.map((slot) => itemById(loadout[slot])).filter(
-    Boolean,
-  ) as UiItem[];
-  const distance = equipped.reduce((sum, item) => sum + (item.distance ?? 0), 0);
-  const magic = equipped.reduce((sum, item) => sum + (item.magic ?? 0), 0);
-  const armor = equipped.reduce((sum, item) => sum + (item.armor ?? 0), 0);
-  const slots = equipped.reduce((sum, item) => sum + (item.imbueSlots ?? 0), 0);
+  const [section, setSection] = useState<"progressao" | "guias">("progressao");
 
   return (
-    <div className="inventory-panel">
-      <div className="inventory-title">
-        <h3>Loadout atual</h3>
-        <span className="chip chip-blue">Salvo localmente</span>
+    <section className="view" aria-labelledby="journey-title">
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">Aprenda no seu ritmo</p>
+          <h1 id="journey-title" data-view-title tabIndex={-1}>
+            Sua Jornada
+          </h1>
+          <p>
+            Consulte a progressão quando quiser saber “o que vem depois” e os
+            guias quando um termo ou sistema ainda parecer confuso.
+          </p>
+        </div>
       </div>
-      <div className="inventory-paperdoll" aria-label="Inventário equipado">
-        {SLOT_ORDER.map((slot) => {
-          const item = itemById(loadout[slot]);
-          return (
-            <button
-              className={`slot ${slotClass(slot)}${
-                item ? " is-filled" : ""
-              }${selectedSlot === slot ? " is-selected" : ""}`}
-              type="button"
-              key={slot}
-              onClick={() => onSelectSlot(slot)}
-              aria-label={`${SLOT_LABELS[slot]}: ${
-                item?.name ?? "vazio"
-              }. Selecionar slot.`}
-            >
-              <span className="slot-glyph" aria-hidden="true">
-                {item?.icon ?? "·"}
+
+      <div className="journey-tabs" role="tablist" aria-label="Seções da jornada">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={section === "progressao"}
+          onClick={() => setSection("progressao")}
+        >
+          Progressão por level
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={section === "guias"}
+          onClick={() => setSection("guias")}
+        >
+          Guias passo a passo
+        </button>
+      </div>
+
+      {section === "progressao" ? (
+        <ProgressionView
+          level={level}
+          completed={completed}
+          toggleCompleted={toggleCompleted}
+        />
+      ) : (
+        <GuidesView guides={GUIDES} />
+      )}
+
+      <article className="glossary">
+        <div>
+          <span className="card-label">Dicionário rápido</span>
+          <h2>Palavras que você vai encontrar</h2>
+        </div>
+        <dl>
+          <div>
+            <dt>Loadout / set</dt>
+            <dd>Os equipamentos que estão no seu personagem.</dd>
+          </div>
+          <div>
+            <dt>DPS</dt>
+            <dd>Dano esperado por segundo em uma rotação de referência.</dd>
+          </div>
+          <div>
+            <dt>Sustain</dt>
+            <dd>Quanto você recupera de vida e mana durante a luta.</dd>
+          </div>
+          <div>
+            <dt>BIS</dt>
+            <dd>“Melhor item”, mas sempre para um objetivo específico.</dd>
+          </div>
+        </dl>
+      </article>
+    </section>
+  );
+}
+
+function ProgressionView({
+  level,
+  completed,
+  toggleCompleted,
+}: {
+  level: number;
+  completed: readonly string[];
+  toggleCompleted: (id: string) => void;
+}) {
+  return (
+    <div className="progression-list" role="tabpanel">
+      {PROGRESSION_BANDS.map((band) => {
+        const current =
+          level >= band.minLevel &&
+          (band.maxLevel === null || level <= band.maxLevel);
+        const related = MILESTONES.filter(
+          (milestone) =>
+            milestone.level >= band.minLevel &&
+            (band.maxLevel === null || milestone.level <= band.maxLevel),
+        );
+
+        return (
+          <article
+            className={`progression-card${current ? " is-current" : ""}`}
+            key={band.id}
+          >
+            <div className="level-range">{band.levelLabel}</div>
+            <div className="progression-copy">
+              <span className="card-label">
+                {current ? "Sua fase atual" : "Fase da jornada"}
               </span>
-              <span className="slot-name">
-                {item?.name ?? SLOT_LABELS[slot]}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-      <div className="inventory-summary">
-        <div className="inventory-stat">
-          <span>Distance</span>
-          <strong>+{distance}</strong>
-        </div>
-        <div className="inventory-stat">
-          <span>Holy ML</span>
-          <strong>+{magic}</strong>
-        </div>
-        <div className="inventory-stat">
-          <span>Armor</span>
-          <strong>{armor}</strong>
-        </div>
-        <div className="inventory-stat">
-          <span>Slots imbue</span>
-          <strong>{slots}</strong>
-        </div>
-      </div>
+              <h2>{band.title}</h2>
+              <p>{band.focus}</p>
+              <div className="progression-columns">
+                <div>
+                  <strong>Prioridades</strong>
+                  <ul>
+                    {band.goals.slice(0, 3).map((goal) => (
+                      <li key={goal}>{goal}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <strong>Equipamento e rotação</strong>
+                  <p>{band.loadout.slice(0, 2).join(" · ")}</p>
+                  <p>{band.rotation}</p>
+                </div>
+              </div>
+              {related.length ? (
+                <div className="milestone-checks">
+                  {related.map((milestone) => {
+                    const done = completed.includes(milestone.id);
+                    return (
+                      <button
+                        type="button"
+                        key={milestone.id}
+                        aria-pressed={done}
+                        onClick={() => toggleCompleted(milestone.id)}
+                      >
+                        <span aria-hidden="true">{done ? "✓" : ""}</span>
+                        <span>
+                          <strong>Lv {milestone.level}</strong>
+                          {milestone.title}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
+          </article>
+        );
+      })}
     </div>
   );
 }
 
-function ArsenalView({
-  level,
-  loadout,
-  setLoadout,
-}: {
-  level: number;
-  loadout: Partial<Record<EquipmentSlot, string>>;
-  setLoadout: (
-    loadout: Partial<Record<EquipmentSlot, string>>,
-  ) => void;
-}) {
-  const [slot, setSlot] = useState<EquipmentSlot>("weapon");
-  const [showFuture, setShowFuture] = useState(false);
-  const [contextId, setContextId] = useState(
-    bisContexts.find((context) => context.minLevel <= level)?.id ??
-      bisContexts[0]?.id ??
-      "",
-  );
-  const selectedContext =
-    bisContexts.find((context) => context.id === contextId) ?? bisContexts[0];
-  const choices = items
-    .filter(
-      (item) =>
-        item.slot === slot && (showFuture || item.minLevel <= level),
-    )
-    .sort((a, b) => a.minLevel - b.minLevel);
-
-  function equip(item: UiItem) {
-    setLoadout({ ...loadout, [item.slot]: item.id });
-  }
-
-  function applyContext(context: UiBisContext | undefined) {
-    if (!context) {
-      setLoadout(suggestedLoadout(level));
-      return;
-    }
-
-    const next = { ...loadout };
-    for (const [contextSlot, itemIds] of Object.entries(context.slots) as Array<
-      [EquipmentSlot, readonly string[]]
-    >) {
-      const eligibleId = itemIds.find((id) => {
-        const item = itemById(id);
-        return item && item.minLevel <= level;
-      });
-      if (eligibleId) next[contextSlot] = eligibleId;
-    }
-    setLoadout(next);
-  }
+function GuidesView({ guides }: { guides: readonly Guide[] }) {
+  const [open, setOpen] = useState(guides[0]?.id ?? "");
 
   return (
-    <section className="view" aria-labelledby="arsenal-title">
-      <div className="section-heading">
-        <div>
-          <p className="eyebrow">BIS é uma pergunta de contexto</p>
-          <h1 id="arsenal-title">Monte o seu arsenal</h1>
-          <p>
-            Use o inventário para trocar cada slot. Dano nominal não vence
-            sempre: a proteção dominante do spawn, sustain e custo podem valer
-            mais.
-          </p>
-        </div>
-        <button
-          className="button button-primary"
-          type="button"
-          onClick={() => applyContext(selectedContext)}
-        >
-          Aplicar contexto
-        </button>
-      </div>
-
-      <div className="tabs" role="tablist" aria-label="Contexto do loadout">
-        {bisContexts.map((context) => (
-          <button
-            className="tab-button"
-            type="button"
-            role="tab"
-            aria-selected={selectedContext?.id === context.id}
-            onClick={() => setContextId(context.id)}
-            key={context.id}
-          >
-            {context.label} · {context.minLevel}+
-          </button>
-        ))}
-      </div>
-      {selectedContext ? (
-        <div className="callout callout-blue" style={{ marginBottom: 16 }}>
-          <strong>{selectedContext.goal}</strong> {selectedContext.tradeoff}
-          <a
-            className="source-anchor"
-            href={selectedContext.sourceUrl}
-            target="_blank"
-            rel="noreferrer"
-            style={{ marginLeft: 8 }}
-          >
-            Fonte ↗
-          </a>
-        </div>
-      ) : null}
-
-      <div className="inventory-layout">
-        <Inventory
-          loadout={loadout}
-          selectedSlot={slot}
-          onSelectSlot={setSlot}
-        />
-
-        <div className="panel">
-          <div className="panel-header">
-            <div>
-              <h3>{SLOT_LABELS[slot]}</h3>
-              <p>
-                {choices.length} opções {showFuture ? "no guia" : "no seu level"}
-              </p>
-            </div>
+    <div className="guide-list" role="tabpanel">
+      {guides.map((guide, index) => {
+        const expanded = open === guide.id;
+        return (
+          <article className="guide-card" key={guide.id}>
             <button
-              className="button button-small"
               type="button"
-              aria-pressed={showFuture}
-              onClick={() => setShowFuture((current) => !current)}
+              aria-expanded={expanded}
+              onClick={() => setOpen(expanded ? "" : guide.id)}
             >
-              {showFuture ? "Ocultar futuros" : "Ver progressão futura"}
-            </button>
-          </div>
-          <div className="gear-list">
-            {choices.map((item) => {
-              const equipped = loadout[item.slot] === item.id;
-              return (
-                <button
-                  type="button"
-                  className={`gear-choice${equipped ? " is-equipped" : ""}`}
-                  onClick={() => equip(item)}
-                  key={item.id}
-                >
-                  <span className="item-glyph" aria-hidden="true">
-                    {item.icon}
-                  </span>
-                  <span>
-                    <strong>{item.name}</strong>
-                    <small>
-                      Lv {item.minLevel} · {item.summary}
-                    </small>
-                  </span>
-                  <span className="equip-label">
-                    {equipped ? "Equipado" : "Equipar"}
-                  </span>
-                </button>
-              );
-            })}
-            {!choices.length ? (
-              <div className="empty-state">
-                Nenhum item catalogado para este slot e level.
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function AcademyView() {
-  const [open, setOpen] = useState<string>(guides[0]?.id ?? "");
-
-  return (
-    <section className="view" aria-labelledby="academy-title">
-      <div className="section-heading">
-        <div>
-          <p className="eyebrow">Como fazer, passo a passo</p>
-          <h1 id="academy-title">Mecânicas sem mistério</h1>
-          <p>
-            Guias curtos para executar a ação no jogo e entender onde vale
-            investir. Desde janeiro de 2026, spells são liberadas
-            automaticamente e sem custo no level.
-          </p>
-        </div>
-        <span className="review-stamp">Mecânicas 2026</span>
-      </div>
-
-      <div className="guides-grid">
-        {guides.map((guide) => {
-          const isOpen = guide.id === open;
-          return (
-            <article
-              className={`guide-card${isOpen ? " is-open" : ""}`}
-              key={guide.id}
-            >
-              <button
-                type="button"
-                className="guide-summary"
-                aria-expanded={isOpen}
-                onClick={() => setOpen(isOpen ? "" : guide.id)}
-              >
-                <span className="guide-icon" aria-hidden="true">
-                  {guideIcon(guide)}
-                </span>
-                <span className="guide-copy">
-                  <span className="guide-title">{guide.title}</span>
-                  <span className="guide-description">{guide.summary}</span>
-                </span>
-                <span className="guide-chevron" aria-hidden="true">
-                  ⌄
-                </span>
-              </button>
-              {isOpen ? (
-                <div className="guide-body">
-                  <ol>
-                    {guide.steps.map((step) => (
-                      <li key={step.title}>
-                        <strong>{step.title}.</strong> {step.body}
-                        {step.detail?.length ? (
-                          <ul>
-                            {step.detail.map((detail) => (
-                              <li key={detail}>{detail}</li>
-                            ))}
-                          </ul>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ol>
-                  <div className="callout">
-                    <strong>Atenção:</strong> {guide.warnings.join(" ")}
-                  </div>
-                  <div className="card-footer">
-                    <span className="source-anchor">Revisado 28 jul 2026</span>
-                    <a
-                      className="source-anchor"
-                      href={guide.sourceUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      {guide.sourceName} ↗
-                    </a>
-                  </div>
-                </div>
-              ) : null}
-            </article>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
-function SimulatorView({
-  level,
-  loadout,
-  setLoadout,
-}: {
-  level: number;
-  loadout: Partial<Record<EquipmentSlot, string>>;
-  setLoadout: (
-    loadout: Partial<Record<EquipmentSlot, string>>,
-  ) => void;
-}) {
-  const [slot, setSlot] = useState<EquipmentSlot>("weapon");
-  const [distance, setDistance] = useState(110);
-  const [magicLevel, setMagicLevel] = useState(30);
-  const [stance, setStance] = useState<PaladinStance>("sharpshooter");
-  const [resistance, setResistance] = useState(0);
-  const [accuracy, setAccuracy] = useState(100);
-  const [forgeTier, setForgeTier] = useState(0);
-  const [powerfulStrike, setPowerfulStrike] = useState(true);
-  const [powerfulVamp, setPowerfulVamp] = useState(true);
-  const [powerfulVoid, setPowerfulVoid] = useState(true);
-  const [analyzerAverage, setAnalyzerAverage] = useState(0);
-
-  const equipped = SLOT_ORDER.map((itemSlot) =>
-    itemById(loadout[itemSlot]),
-  ).filter(Boolean) as UiItem[];
-  const gearDistance = equipped.reduce(
-    (sum, item) => sum + (item.distance ?? 0),
-    0,
-  );
-  const gearMagic = equipped.reduce(
-    (sum, item) => sum + (item.magic ?? 0),
-    0,
-  );
-  const weapon = itemById(loadout.weapon);
-  const ammo = itemById(loadout.ammo);
-  const isThrownWeapon = Boolean(
-    weapon && /spear|star|knife|javelin/i.test(weapon.name),
-  );
-  const isCrossbow = Boolean(weapon && /crossbow|arbalest|piercer/i.test(weapon.name));
-  const isBolt = Boolean(ammo && /bolt/i.test(ammo.name));
-  const incompatibleAmmo = Boolean(
-    weapon && ammo && ((isCrossbow && !isBolt) || (!isCrossbow && !isThrownWeapon && isBolt)),
-  );
-  const ammunitionAttack = isThrownWeapon
-    ? weapon?.attack ?? 0
-    : ammo?.attack ?? 37;
-  const weaponAttackModifier = isThrownWeapon ? 0 : weapon?.attack ?? 0;
-
-  const result = estimateAutoAttack({
-    level,
-    distance: distance + gearDistance,
-    magicLevel: magicLevel + gearMagic,
-    stance,
-    ammunitionAttack,
-    weaponAttackModifier,
-    accuracyPercent: accuracy,
-    targetResistancePercent: resistance,
-    critical: powerfulStrike
-      ? { chancePercent: 10, extraDamagePercent: 50 }
-      : { chancePercent: 5, extraDamagePercent: 10 },
-    forgeTier,
-    lifeLeechPercent: powerfulVamp ? 25 : 0,
-    manaLeechPercent: powerfulVoid ? 8 : 0,
-  });
-
-  const cycle = estimateFourSecondCycle({
-    autoAttack: {
-      level,
-      distance: distance + gearDistance,
-      magicLevel: magicLevel + gearMagic,
-      stance,
-      ammunitionAttack,
-      weaponAttackModifier,
-      accuracyPercent: accuracy,
-      targetResistancePercent: resistance,
-      critical: powerfulStrike
-        ? { chancePercent: 10, extraDamagePercent: 50 }
-        : { chancePercent: 5, extraDamagePercent: 10 },
-      forgeTier,
-      lifeLeechPercent: powerfulVamp ? 25 : 0,
-      manaLeechPercent: powerfulVoid ? 8 : 0,
-    },
-  });
-
-  const calibration =
-    analyzerAverage > 0 && result.expectedDamagePerAttempt > 0
-      ? analyzerAverage / result.expectedDamagePerAttempt
-      : null;
-  const pickerItems = items
-    .filter((item) => item.slot === slot && item.minLevel <= level)
-    .sort((a, b) => b.minLevel - a.minLevel);
-
-  return (
-    <section className="view" aria-labelledby="simulator-title">
-      <div className="section-heading">
-        <div>
-          <p className="eyebrow">Compare, não adivinhe</p>
-          <h1 id="simulator-title">Seu dano, com ressalvas honestas</h1>
-          <p>
-            Selecione os itens no inventário e ajuste seus skills. O resultado
-            serve para comparar loadouts; valide sempre no Impact Analyzer do
-            jogo.
-          </p>
-        </div>
-        <span className="review-stamp">
-          Modelo {DAMAGE_MODEL_VERSION}
-        </span>
-      </div>
-
-      <div className="simulator-layout">
-        <div>
-          <Inventory
-            loadout={loadout}
-            selectedSlot={slot}
-            onSelectSlot={setSlot}
-          />
-          <div className="panel" style={{ marginTop: 12 }}>
-            <div className="panel-header">
-              <div>
-                <h3>Trocar {SLOT_LABELS[slot]}</h3>
-                <p>Somente itens até o seu level.</p>
-              </div>
-            </div>
-            <div className="gear-list">
-              {pickerItems.slice(0, 6).map((item) => (
-                <button
-                  type="button"
-                  className={`gear-choice${
-                    loadout[item.slot] === item.id ? " is-equipped" : ""
-                  }`}
-                  onClick={() =>
-                    setLoadout({ ...loadout, [item.slot]: item.id })
-                  }
-                  key={item.id}
-                >
-                  <span className="item-glyph" aria-hidden="true">
-                    {item.icon}
-                  </span>
-                  <span>
-                    <strong>{item.name}</strong>
-                    <small>
-                      Lv {item.minLevel} · {item.summary}
-                    </small>
-                  </span>
-                  <span className="equip-label">
-                    {loadout[item.slot] === item.id ? "Equipado" : "Usar"}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <article className="sim-panel">
-            <h3>Atributos e alvo</h3>
-            <p>
-              Bônus de Distance e Holy ML dos itens equipados entram
-              automaticamente.
-            </p>
-            <div className="form-grid">
-              <label className="field">
-                <span>Distance base</span>
-                <input
-                  type="number"
-                  min={10}
-                  max={250}
-                  value={distance}
-                  onChange={(event) =>
-                    setDistance(Math.max(10, event.target.valueAsNumber || 10))
-                  }
-                />
-                <small className="field-help">
-                  Com gear: {distance + gearDistance}
-                </small>
-              </label>
-              <label className="field">
-                <span>Magic level base</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={200}
-                  value={magicLevel}
-                  onChange={(event) =>
-                    setMagicLevel(Math.max(0, event.target.valueAsNumber || 0))
-                  }
-                />
-                <small className="field-help">
-                  Com gear: {magicLevel + gearMagic}
-                </small>
-              </label>
-              <label className="field field-wide">
-                <span>Stance</span>
-                <select
-                  value={stance}
-                  onChange={(event) =>
-                    setStance(event.target.value as PaladinStance)
-                  }
-                >
-                  <option value="neutral">Sem stance</option>
-                  <option value="sharpshooter">
-                    Sharpshooter · +32% Distance
-                  </option>
-                  <option value="divine-defiance">
-                    Divine Defiance · +6% Dist em Holy/Healing ML
-                  </option>
-                </select>
-              </label>
-              <label className="field">
-                <span>Resistência do alvo</span>
-                <span className="range-row">
-                  <input
-                    type="range"
-                    min={-30}
-                    max={80}
-                    value={resistance}
-                    onChange={(event) =>
-                      setResistance(Number(event.target.value))
-                    }
-                  />
-                  <span className="range-value">{resistance}%</span>
-                </span>
-              </label>
-              <label className="field">
-                <span>Precisão observada</span>
-                <span className="range-row">
-                  <input
-                    type="range"
-                    min={50}
-                    max={100}
-                    value={accuracy}
-                    onChange={(event) =>
-                      setAccuracy(Number(event.target.value))
-                    }
-                  />
-                  <span className="range-value">{accuracy}%</span>
-                </span>
-              </label>
-              <label className="field">
-                <span>Forge tier da arma</span>
-                <select
-                  value={forgeTier}
-                  onChange={(event) =>
-                    setForgeTier(Number(event.target.value))
-                  }
-                >
-                  {Array.from({ length: 11 }, (_, tier) => (
-                    <option value={tier} key={tier}>
-                      {tier === 0 ? "Sem tier" : `Tier ${tier}`}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="field">
-                <span>Média no Impact Analyzer</span>
-                <input
-                  type="number"
-                  min={0}
-                  placeholder="Opcional"
-                  value={analyzerAverage || ""}
-                  onChange={(event) =>
-                    setAnalyzerAverage(
-                      Math.max(0, event.target.valueAsNumber || 0),
-                    )
-                  }
-                />
-                <small className="field-help">
-                  Ajuda a enxergar o desvio do modelo.
-                </small>
-              </label>
-              <div className="field field-wide">
-                <span>Imbuements</span>
-                <div className="toggle-row">
-                  <button
-                    type="button"
-                    className="toggle"
-                    aria-pressed={powerfulStrike}
-                    onClick={() => setPowerfulStrike((current) => !current)}
-                  >
-                    Powerful Strike
-                  </button>
-                  <button
-                    type="button"
-                    className="toggle"
-                    aria-pressed={powerfulVamp}
-                    onClick={() => setPowerfulVamp((current) => !current)}
-                  >
-                    Vampirism 25%
-                  </button>
-                  <button
-                    type="button"
-                    className="toggle"
-                    aria-pressed={powerfulVoid}
-                    onClick={() => setPowerfulVoid((current) => !current)}
-                  >
-                    Void 8%
-                  </button>
-                </div>
-              </div>
-            </div>
-          </article>
-
-          <article className="sim-panel" style={{ marginTop: 12 }}>
-            <div className="result-hero" aria-live="polite">
-              <span className="result-label">
-                Autoattack esperado por tentativa
-              </span>
-              <div className="result-value">
-                {Math.round(result.expectedDamagePerAttempt)}
-              </div>
-              <div className="result-subtitle">
-                {weapon?.name ?? "Arma sem bônus"}
-                {isThrownWeapon
-                  ? ""
-                  : ` + ${ammo?.name ?? "Diamond Arrow padrão"}`}{" "}
-                · pós-resistência e precisão
-              </div>
-            </div>
-
-            <div className="results-grid">
-              <div className="result-card">
-                <span>Faixa bruta experimental</span>
-                <strong>
-                  {Math.round(result.raw.min)}–{Math.round(result.raw.max)}
-                </strong>
-              </div>
-              <div className="result-card">
-                <span>Média bruta</span>
-                <strong>{Math.round(result.raw.average)}</strong>
-              </div>
-              <div className="result-card">
-                <span>Ciclo teórico 4s</span>
-                <strong>{Math.round(cycle.expectedDamage)}</strong>
-              </div>
-              <div className="result-card">
-                <span>DPS proxy</span>
-                <strong>{Math.round(cycle.expectedDps)}</strong>
-              </div>
-              <div className="result-card">
-                <span>Leech vida / hit</span>
-                <strong>{result.primaryTargetLeech.life}</strong>
-              </div>
-              <div className="result-card">
-                <span>Leech mana / hit</span>
-                <strong>{result.primaryTargetLeech.mana}</strong>
-              </div>
-            </div>
-
-            {calibration ? (
-              <div className="callout callout-blue" style={{ marginTop: 12 }}>
-                Seu Analyzer indica fator local{" "}
-                <strong>{calibration.toFixed(2)}×</strong>. Use esse desvio para
-                comparar alternativas, não para corrigir todos os cenários.
-              </div>
-            ) : null}
-
-            {incompatibleAmmo ? (
-              <div className="callout" style={{ marginTop: 12 }}>
-                <strong>Loadout incompatível:</strong> bows usam arrows;
-                crossbows usam bolts. Troque a arma ou a munição antes de usar
-                esta comparação.
-              </div>
-            ) : null}
-
-            <div className="confidence">
-              <strong>Baixa confiança absoluta</strong>
+              <span className="guide-number">{String(index + 1).padStart(2, "0")}</span>
               <span>
-                Estimativa comunitária. O dano real varia por armadura,
-                resistência, Wheel, charms, proficiency, distribuição interna e
-                atualizações. Valide no Impact Analyzer.
+                <strong>{guide.title}</strong>
+                <small>{guide.summary}</small>
               </span>
-            </div>
-
-            <details className="formula-details">
-              <summary>Ver fórmula e premissas</summary>
-              <pre>{`s = floor((√(2L + 2025) + 5) / 10)
-B = floor((L + 1000) / s) + 50s - 450
-K = floor(6W / 5) × (Distance efetivo + 4) / 28
-média bruta ≈ B + floor(K)
-
-Ciclo comparativo: 2 autos + Caldera(BP150) + Barrage(BP130)
-Não inclui armor, shielding, Wheel, charms, prey ou nº de alvos.`}</pre>
-            </details>
+              <span aria-hidden="true">{expanded ? "−" : "+"}</span>
+            </button>
+            {expanded ? (
+              <div className="guide-content">
+                <ol>
+                  {guide.steps.map((step) => (
+                    <li key={step.title}>
+                      <strong>{step.title}</strong>
+                      <p>{step.body}</p>
+                      {step.detail?.length ? (
+                        <ul>
+                          {step.detail.map((detail) => (
+                            <li key={detail}>{detail}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </li>
+                  ))}
+                </ol>
+                <div className="beginner-note">
+                  <strong>Atenção:</strong> {guide.warnings.join(" ")}
+                </div>
+                <a href={guide.sourceUrl} target="_blank" rel="noreferrer">
+                  {guide.sourceName} ↗
+                </a>
+              </div>
+            ) : null}
           </article>
-        </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function Disclosure() {
+  return (
+    <aside className="disclosure">
+      <span aria-hidden="true">i</span>
+      <div>
+        <strong>Transparência: projeto 100% produzido com IA</strong>
+        Pesquisa, conteúdo, design, código e testes foram realizados com
+        inteligência artificial e conferidos contra fontes oficiais e
+        comunitárias. É um projeto pessoal, gratuito, sem fins lucrativos e não
+        afiliado à CipSoft.
       </div>
-    </section>
+    </aside>
+  );
+}
+
+function Footer() {
+  return (
+    <footer className="site-footer">
+      <div>
+        <strong>RoyalPath · Guia simples para Royal Paladin</strong>
+        <p>
+          Conteúdo revisado em 28 jul 2026 · Tibia 15.30 · números podem mudar
+          com patches.
+        </p>
+      </div>
+      <div>
+        <p>
+          RoyalPath é um projeto não oficial. Tibia e seus elementos gráficos
+          são propriedade da CipSoft GmbH. O único site oficial é{" "}
+          <a href="https://www.tibia.com/" target="_blank" rel="noreferrer">
+            Tibia.com
+          </a>
+          .
+        </p>
+        <p>
+          Sprites exibidos no Arsenal são usados para identificação dos itens e
+          não fazem parte da licença MIT do código.
+        </p>
+      </div>
+      <nav aria-label="Fontes principais">
+        {SOURCES.slice(0, 4).map((source) => (
+          <a href={source.url} target="_blank" rel="noreferrer" key={source.id}>
+            {source.name}
+          </a>
+        ))}
+      </nav>
+    </footer>
   );
 }

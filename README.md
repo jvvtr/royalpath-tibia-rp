@@ -1,9 +1,9 @@
 # RoyalPath
 
-Guia pessoal, gratuito e não oficial de progressão para **Royal Paladin** no
-Tibia. O app reúne roadmap do level 8 ao endgame, hunts de leveling e farm,
-progressão de equipamentos, guias de sistemas e um simulador comparativo de
-dano com loadout em formato de inventário.
+Guia pessoal, gratuito e não oficial para **iniciantes de Royal Paladin** no
+Tibia. O app transforma level, skills e equipamentos em um resumo simples de
+vida, mana, capacidade, defesa e DPS esperado, sem esconder as limitações da
+estimativa.
 
 > Pesquisa, arquitetura, conteúdo, identidade visual, código e testes deste
 > projeto foram produzidos **100% com auxílio de inteligência artificial**.
@@ -11,15 +11,14 @@ dano com loadout em formato de inventário.
 
 ## O que já está incluído
 
-- painel “Agora” que adapta as próximas metas ao level do personagem;
-- roadmap completo do level 8 ao 1000+;
-- hunts com filtros de XP, farm e margem de segurança para iniciantes;
-- arsenal por slot e contexto, sem tratar “BIS” como uma resposta universal;
-- academia com imbuements, Exaltation Forge, Weapon Proficiency, stances e
-  rotação;
-- simulador comparativo de autoattack e ciclo teórico de quatro segundos;
-- persistência local de level, metas concluídas e loadout;
-- navegação responsiva e acessível em desktop e celular.
+- início em três passos: informe o personagem, monte o set e leia o resultado;
+- Arsenal visual por slot, com a imagem do item selecionado;
+- vida, mana, capacidade, armor e proteções calculadas a partir do perfil;
+- DPS comparativo com uma rotação adequada ao level informado;
+- hunts com foco e margem de segurança para iniciantes;
+- jornada do level 8 ao 1000+ e guias de sistemas em uma única seção;
+- persistência local de level, skills, metas, loadout e opções avançadas;
+- navegação responsiva com cinco destinos claros em desktop e celular.
 
 O conteúdo foi revisado em **28 de julho de 2026**, para o Tibia 15.30. Métricas
 de hunts são observações comunitárias e podem variar por skills, stamina, prey,
@@ -36,6 +35,29 @@ npm run dev
 
 Abra `http://localhost:3000`.
 
+## Publicação fácil no GitHub Pages
+
+O projeto inclui um workflow que gera a versão totalmente estática e publica
+automaticamente todo push na branch `main`. O endereço esperado deste
+repositório é:
+
+<https://jvvtr.github.io/royalpath-tibia-rp/>
+
+Antes do primeiro deploy, abra **Settings → Pages** no repositório e escolha
+**GitHub Actions** em **Source**. Depois disso, os próximos pushes na `main`
+serão publicados sem comandos manuais.
+
+Para validar exatamente o mesmo artefato antes de enviar:
+
+```bash
+npm run test:pages
+```
+
+O comando cria `out/`, aplica automaticamente o subdiretório correto do
+repositório, verifica o HTML e confirma os 44 sprites do Arsenal. Em forks, o
+nome do dono e do repositório são inferidos pelo GitHub Actions; domínio próprio
+também é respeitado pelos dados fornecidos pelo Pages.
+
 ## Validação
 
 ```bash
@@ -43,15 +65,16 @@ npm run lint
 npm run test
 ```
 
-O comando de teste gera a build de produção, valida o motor de dano e a
-integridade do conteúdo, e faz um smoke test do HTML renderizado.
+O comando de teste gera a build de produção, valida os motores de personagem e
+dano, verifica a integridade do conteúdo e faz um smoke test do HTML renderizado.
 
 ## Como o simulador deve ser lido
 
 O simulador é uma ferramenta de **comparação**, não um preditor exato. A CipSoft
 não publica a fórmula completa de dano. O RoyalPath usa uma fórmula comunitária
-reversa, ajustada às mudanças oficiais de 2026, e mantém armadura, mitigação,
-Wheel, charms, prey e outros modificadores fora do número principal.
+reversa, ajustada às mudanças oficiais de 2026, e mantém mitigação do monstro,
+Wheel, charms, prey e outros modificadores fora do número principal. Spells só
+entram no ciclo simplificado quando o level informado já permite usá-las.
 
 A estimativa deve ser confirmada no Impact Analyzer/Combat Stats do próprio jogo.
 A implementação e as ressalvas ficam em [`lib/damage.ts`](./lib/damage.ts).
@@ -72,11 +95,14 @@ dentro do app.
 ## Aviso legal
 
 RoyalPath não é afiliado, endossado ou mantido pela CipSoft GmbH. Tibia e seus
-elementos são marcas/propriedade de seus respectivos titulares. A interface usa
-uma identidade original inspirada em fantasia medieval, sem copiar logo, sprites
-ou telas do cliente.
+elementos, incluindo os sprites dos itens, são propriedade de seus respectivos
+titulares. Os PNGs em `public/items/` são usados para identificação visual no
+guia não comercial; sua origem e atribuição ficam em
+[`public/items/NOTICE.md`](./public/items/NOTICE.md).
 
 ## Licença
 
-Código disponibilizado sob a [licença MIT](./LICENSE). Conteúdo informativo
-fornecido “como está”, sem garantia de precisão ou segurança de qualquer hunt.
+O código original do RoyalPath é disponibilizado sob a
+[licença MIT](./LICENSE). Os sprites de terceiros em `public/items/` ficam
+expressamente fora dessa licença. Conteúdo informativo fornecido “como está”,
+sem garantia de precisão ou segurança de qualquer hunt.
