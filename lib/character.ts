@@ -17,6 +17,8 @@ export const PROTECTION_TYPES = [
   "ice",
   "holy",
   "death",
+  "lifeDrain",
+  "manaDrain",
 ] as const;
 
 export type ProtectionType = (typeof PROTECTION_TYPES)[number];
@@ -25,6 +27,7 @@ export type ProtectionTotals = Record<ProtectionType, number>;
 
 export type CharacterItemStats = {
   armor?: number;
+  defense?: number;
   distance?: number;
   magic?: number;
   protection?: readonly string[];
@@ -53,6 +56,7 @@ export type CharacterStats = {
   mana: number;
   capacity: number;
   armor: number;
+  defense: number;
   distance: number;
   magic: number;
   protections: ProtectionTotals;
@@ -72,6 +76,10 @@ const PROTECTION_ALIASES: Readonly<Record<string, ProtectionType>> = {
   gelo: "ice",
   holy: "holy",
   death: "death",
+  "life drain": "lifeDrain",
+  "dreno de vida": "lifeDrain",
+  "mana drain": "manaDrain",
+  "dreno de mana": "manaDrain",
 };
 
 const PROTECTION_PATTERN =
@@ -126,12 +134,14 @@ function createEmptyProtections(initialValue: number): ProtectionTotals {
     ice: initialValue,
     holy: initialValue,
     death: initialValue,
+    lifeDrain: initialValue,
+    manaDrain: initialValue,
   };
 }
 
 function readItemNumber(
   item: CharacterItemStats,
-  field: "armor" | "distance" | "magic",
+  field: "armor" | "defense" | "distance" | "magic",
   itemIndex: number,
 ): number {
   const value = item[field];
@@ -146,9 +156,9 @@ function readItemNumber(
     throw new RangeError(`items[${itemIndex}].${field} deve ser um inteiro.`);
   }
 
-  if (field === "armor" && value < 0) {
+  if ((field === "armor" || field === "defense") && value < 0) {
     throw new RangeError(
-      `items[${itemIndex}].armor deve ser maior ou igual a zero.`,
+      `items[${itemIndex}].${field} deve ser maior ou igual a zero.`,
     );
   }
 
@@ -308,11 +318,13 @@ export function calculateCharacterStats<
 
   const items = validateItems(input.items);
   let armor = 0;
+  let defense = 0;
   let distanceBonus = 0;
   let magicBonus = 0;
 
   items.forEach((item, index) => {
     armor += readItemNumber(item, "armor", index);
+    defense += readItemNumber(item, "defense", index);
     distanceBonus += readItemNumber(item, "distance", index);
     magicBonus += readItemNumber(item, "magic", index);
   });
@@ -333,6 +345,7 @@ export function calculateCharacterStats<
     mana: royalPaladinMana(input.level),
     capacity: royalPaladinCapacity(input.level),
     armor,
+    defense,
     distance,
     magic,
     protections: aggregateProtections(items),

@@ -1,4 +1,6 @@
-export const LAST_VERIFIED = "2026-07-28" as const;
+import { GENERATED_PALADIN_ITEMS } from "./items.generated.ts";
+
+export const LAST_VERIFIED = "2026-07-29" as const;
 
 export type Confidence = "alta" | "média" | "baixa";
 
@@ -79,6 +81,7 @@ export interface Hunt extends Provenance {
 export type ItemSlot =
   | "weapon"
   | "ammo"
+  | "shield"
   | "head"
   | "armor"
   | "legs"
@@ -93,12 +96,15 @@ export interface Item extends Provenance {
   id: string;
   name: string;
   slot: ItemSlot;
+  weaponKind?: "bow" | "crossbow" | "thrown";
+  ammoKind?: "arrow" | "bolt";
   minLevel: number;
   attack?: number;
   hit?: number;
   distance?: number;
   magic?: number;
   armor?: number;
+  defense?: number;
   protection?: string[];
   imbueSlots?: number;
   tierClass?: 0 | 1 | 2 | 3 | 4;
@@ -125,7 +131,19 @@ export interface GuideStep {
 
 export interface Guide extends Provenance {
   id: string;
-  category: "primeiros-passos" | "combate" | "imbuement" | "forge" | "proficiency";
+  category:
+    | "primeiros-passos"
+    | "treino"
+    | "seguranca"
+    | "combate"
+    | "equipamento"
+    | "imbuement"
+    | "sistemas"
+    | "forge"
+    | "proficiency";
+  minLevel?: number;
+  difficulty?: "basico" | "intermediario" | "avancado";
+  essential?: boolean;
   title: string;
   eyebrow: string;
   summary: string;
@@ -169,6 +187,14 @@ const OFFICIAL_SUMMER_2026: Provenance = {
   confidence: "alta",
 };
 
+const OFFICIAL_PROFICIENCY_2026: Provenance = {
+  sourceUrl: "https://www.tibia.com/news/?id=8850&subtopic=newsarchive",
+  sourceName: "Tibia.com — Weapon Proficiency Update",
+  verifiedAt: LAST_VERIFIED,
+  patch: "Weapon Proficiency Update, 22/06/2026",
+  confidence: "alta",
+};
+
 const WIKI_DISTANCE: Provenance = {
   sourceUrl: "https://www.tibiawiki.com.br/wiki/Dist%C3%A2ncia",
   sourceName: "Tibia Wiki BR — Armas de distância",
@@ -195,9 +221,10 @@ const COMMUNITY_EQUIPMENT: Provenance = {
 
 const COMMUNITY_HUNTS: Provenance = {
   sourceUrl: "https://www.tibiabuddy.com/blog/paladin-hunting-guide-2026",
-  sourceName: "TibiaBuddy — Paladin Hunting Guide 2026",
+  sourceName: "TibiaBuddy — Paladin Hunting Guide (referência pré-rebalance)",
   verifiedAt: LAST_VERIFIED,
-  patch: "Leitura comunitária pós-rebalance de 2026",
+  patch:
+    "Faixas comunitárias anteriores ao rebalance de junho/julho de 2026; não retestadas",
   confidence: "baixa",
 };
 
@@ -228,12 +255,13 @@ const WIKI_FORGE: Provenance = {
 export const CONTENT_NOTICE = {
   title: "Guia vivo, não receita",
   text:
-    "Tibia muda com frequência e não existe um único set BIS para todo respawn. " +
+    "Tibia muda com frequência e não existe um único melhor set (BIS) para todo respawn. " +
     "Preço, skills, charms, Wheel, proficiência, ping, rota, população do mundo e prática " +
     "alteram o resultado. Confira o cliente e o Market antes de gastar.",
   metrics:
     "Faixas de XP e lucro são observações comunitárias, não promessa. Após o rebalance de " +
-    "junho/julho de 2026, o RoyalPath omite números acima do level 80 quando não há reteste " +
+    "junho/julho de 2026, as faixas abaixo do level 80 continuam marcadas como referências " +
+    "pré-rebalance, e o RoyalPath omite números acima do level 80 quando não há reteste " +
     "pós-patch suficientemente claro; Girtablilu aparece como exceção identificada.",
   legal:
     "Projeto pessoal, não oficial, sem fins lucrativos e desenvolvido 100% por IA. " +
@@ -295,7 +323,7 @@ export const MILESTONES: readonly Milestone[] = [
     summary:
       "Aprenda a manter distância, atacar sem interromper a caminhada e carregar suprimentos leves.",
     actions: [
-      "Configure hotkeys de cura, mana, ataque e troca de alvo.",
+      "Configure atalhos (hotkeys) de cura, mana, ataque e troca de alvo.",
       "Comece o treino offline de distance fighting sempre que sair.",
       "Leve rope, shovel, comida e uma pequena reserva de potions.",
     ],
@@ -323,7 +351,7 @@ export const MILESTONES: readonly Milestone[] = [
     levelLabel: "23",
     title: "Inclua Ethereal Spear",
     summary:
-      "Seu primeiro ataque instantâneo de alvo ajuda a preencher turnos sem abandonar o ataque básico.",
+      "Seu primeiro ataque instantâneo de alvo único (single target) ajuda a preencher turnos sem abandonar o ataque básico.",
     actions: [
       "Use a magia entre ataques básicos; não atrase o próximo disparo.",
       "Mantenha mana para cura e saída de emergência.",
@@ -351,9 +379,9 @@ export const MILESTONES: readonly Milestone[] = [
     levelLabel: "50",
     title: "Abra a era de área",
     summary:
-      "Divine Caldera e Shatterstorm Arrow permitem praticar pulls pequenos antes da Diamond Arrow.",
+      "Divine Caldera e Shatterstorm Arrow permitem praticar grupos pequenos (pulls) antes da Diamond Arrow.",
     actions: [
-      "Comece com 2–4 criaturas e uma rota com espaço para kite.",
+      "Comece com 2–4 criaturas e uma rota com espaço para manter distância (kite).",
       "A Divine Caldera ficou com base power 150 no ajuste de 07/07/2026.",
       "Shatterstorm Arrow tem ataque 27 e cobre 13 quadrados.",
     ],
@@ -394,7 +422,7 @@ export const MILESTONES: readonly Milestone[] = [
     levelLabel: "90",
     title: "Crystalline Arrow e Strong Ethereal Spear",
     summary:
-      "O single target ganha força; é uma boa fase para aprimorar pathing e escolha de alvo.",
+      "O dano em alvo único ganha força; é uma boa fase para aprimorar movimentação e escolha de alvo.",
     actions: [
       "Use Crystalline Arrow, ataque 65, onde matar um alvo por vez ainda é mais seguro.",
       "Treine a alternância entre ataque básico, magia e cura sem sobrepor cooldowns.",
@@ -454,7 +482,7 @@ export const MILESTONES: readonly Milestone[] = [
     summary:
       "Bow of Destruction e armaduras situacionais abrem mais slots e proteção sem exigir um set único.",
     actions: [
-      "Priorize arma, imbuements e proteção adequada antes de pensar em tier.",
+      "Priorize arma, imbuements e proteção adequada antes de pensar em nível de Forge (tier).",
       "Tenha ao menos duas armaduras para elementos diferentes quando o orçamento permitir.",
     ],
     tags: ["upgrade", "imbuements", "proteção"],
@@ -480,7 +508,7 @@ export const MILESTONES: readonly Milestone[] = [
     levelLabel: "400",
     title: "Soulbleeder, Alicorn e Soulstalkers",
     summary:
-      "Uma faixa forte de equipamento para dano e proteção física, ainda sujeita a swaps por elemento.",
+      "Uma faixa forte de equipamento para dano e proteção física, ainda sujeita a trocas situacionais (swaps) por elemento.",
     actions: [
       "Compare o custo total já com imbuements.",
       "Não venda todos os itens antigos: uma proteção situacional pode valer mais que status bruto.",
@@ -627,7 +655,7 @@ export const PROGRESSION_BANDS: readonly ProgressionBand[] = [
     rotation:
       "Ataque → Caldera/Divine Barrage → ataque → Ethereal/Divine Barrage conforme posição.",
     caution:
-      "A maior vulnerabilidade elemental nem sempre compensa ataque menor; valide no analyzer.",
+      "A maior vulnerabilidade elemental nem sempre compensa ataque menor; valide no analisador do cliente (Analyzer).",
     ...OFFICIAL_VOCATION_2026,
   },
   {
@@ -905,7 +933,7 @@ export const HUNTS: readonly Hunt[] = [
     minLevel: 90,
     focus: ["leveling"],
     xp: "Sem faixa pós-rebalance confiável",
-    loot: "Tende a waste; valide no analyzer",
+    loot: "Tende a gasto líquido (waste); valide no Analyzer",
     metricStatus: "sem-faixa-pos-rebalance",
     risk: "alto",
     ammo: "Crystalline para alvo; Shatterstorm apenas com pull controlado.",
@@ -1164,20 +1192,20 @@ export const HUNTS: readonly Hunt[] = [
   },
 ] as const;
 
-export const ITEMS: readonly Item[] = [
+const CURATED_ITEMS: readonly Item[] = [
   {
     id: "elvish-bow",
     name: "Elvish Bow",
     slot: "weapon",
     minLevel: 8,
     attack: 0,
-    hit: 5,
+    hit: 3,
     imbueSlots: 3,
     tierClass: 1,
     useCase: ["começo econômico", "três imbuements", "single target"],
     icon: "🏹",
     summary:
-      "O ataque vem da munição; hit +5 e três slots tornam o arco útil por muito mais tempo que o preço sugere.",
+      "O ataque vem da munição; hit +3 e três slots tornam o arco útil por muito mais tempo que o preço sugere.",
     stage: "progressão",
     ...WIKI_DISTANCE,
   },
@@ -1856,6 +1884,50 @@ export const ITEMS: readonly Item[] = [
   },
 ] as const;
 
+export const CURATED_ITEM_IDS: readonly string[] = CURATED_ITEMS.map((item) => item.id);
+
+const generatedItems = GENERATED_PALADIN_ITEMS as unknown as readonly Item[];
+const curatedItemById = new Map(CURATED_ITEMS.map((item) => [item.id, item]));
+const generatedItemIds = new Set(generatedItems.map((item) => item.id));
+
+/**
+ * The synchronized catalog provides breadth and the latest structured numbers.
+ * Hand-written entries keep their beginner-friendly explanation and use cases.
+ */
+export const ITEMS: readonly Item[] = [
+  ...generatedItems.map((generated) => {
+    const curated = curatedItemById.get(generated.id);
+    if (!curated) return generated;
+
+    return {
+      ...generated,
+      ...curated,
+      id: generated.id,
+      name: generated.name,
+      slot: generated.slot,
+      minLevel: generated.minLevel,
+      attack: generated.attack ?? curated.attack,
+      hit: generated.hit ?? curated.hit,
+      distance: generated.distance ?? curated.distance,
+      magic: generated.magic ?? curated.magic,
+      armor: generated.armor ?? curated.armor,
+      defense: generated.defense ?? curated.defense,
+      protection: generated.protection ?? curated.protection,
+      imbueSlots: generated.imbueSlots ?? curated.imbueSlots,
+      tierClass: generated.tierClass ?? curated.tierClass,
+      weaponKind: generated.weaponKind ?? curated.weaponKind,
+      ammoKind: generated.ammoKind ?? curated.ammoKind,
+    };
+  }),
+  ...CURATED_ITEMS.filter((item) => !generatedItemIds.has(item.id)),
+].sort(
+  (left, right) =>
+    left.slot.localeCompare(right.slot) ||
+    left.minLevel - right.minLevel ||
+    left.name.localeCompare(right.name),
+);
+
+
 export const BIS_CONTEXTS: readonly BisContext[] = [
   {
     id: "bis-budget-200",
@@ -1968,19 +2040,22 @@ export const GUIDES: readonly Guide[] = [
   {
     id: "primeira-hora-rp",
     category: "primeiros-passos",
+    minLevel: 8,
+    difficulty: "basico",
+    essential: true,
     title: "Sua primeira hora como Paladin",
     eyebrow: "Comece sem pressa",
     summary:
-      "Configure o personagem para que movimento, ataque, cura e saída de emergência sejam automáticos na sua mão.",
+      "Configure o personagem para que movimento, ataque, cura e saída de emergência fiquem rápidos e intuitivos.",
     estimatedTime: "10 min de preparação",
     steps: [
       {
         title: "Organize a tela",
         body:
-          "Deixe battle list, barras de vida/mana, cooldowns e analyzer visíveis. Remova janelas que escondem o chão.",
+          "Deixe battle list, barras de vida/mana, cooldowns e o analisador (Analyzer) visíveis. Remova janelas que escondem o chão.",
       },
       {
-        title: "Monte hotkeys",
+        title: "Monte atalhos (hotkeys)",
         body:
           "Separe ataque, cura, potion de mana, cura de emergência, rope e troca de alvo. Use teclas alcançáveis sem tirar a mão do movimento.",
       },
@@ -1995,7 +2070,7 @@ export const GUIDES: readonly Guide[] = [
           "Selecione distance fighting sempre que desconectar. Skill melhora a segurança e a eficiência de toda a progressão.",
       },
       {
-        title: "Leia o analyzer",
+        title: "Leia o Analyzer",
         body:
           "Ao voltar, registre XP/h, gasto, loot e maior dano recebido. Uma volta curta vale mais que uma estimativa genérica.",
       },
@@ -2009,8 +2084,8 @@ export const GUIDES: readonly Guide[] = [
       "Capacidade livre para loot",
     ],
     warnings: [
-      "Spells passaram a ser concedidas automaticamente e sem custo em 27/01/2026; guias que mandam comprá-las estão desatualizados.",
-      "Não persiga XP/h enquanto ainda procura suas hotkeys.",
+      "Desde 27/01/2026, somente as spells que antes eram aprendidas com trainers são liberadas automaticamente e sem custo no level correto. Starting spells e spells de Wheel, quests, shrines ou NPCs específicos continuam seguindo suas próprias regras.",
+      "Não persiga XP/h enquanto ainda procura seus atalhos.",
     ],
     relatedSourceIds: ["official-spells-free-2026", "official-spell-library"],
     sourceUrl: "https://www.tibia.com/news/?id=8675&subtopic=newsarchive",
@@ -2020,8 +2095,66 @@ export const GUIDES: readonly Guide[] = [
     confidence: "alta",
   },
   {
+    id: "offline-training",
+    category: "treino",
+    minLevel: 8,
+    difficulty: "basico",
+    essential: true,
+    title: "Treino offline: Distance todos os dias",
+    eyebrow: "O hábito que mais rende",
+    summary:
+      "Ao encerrar a sessão, deixe o Paladin treinando Distance Fighting. É simples, seguro e melhora toda a progressão.",
+    estimatedTime: "1 min ao deslogar",
+    steps: [
+      {
+        title: "Encontre a estátua correta",
+        body:
+          "Com Premium, use uma estátua de treino offline em uma cidade ou escolha o treino ao dormir em uma cama disponível.",
+      },
+      {
+        title: "Escolha Distance Fighting",
+        body:
+          "Para Royal Paladin iniciante, Distance Fighting é a opção padrão. O treino também progride shielding conforme as regras do sistema.",
+      },
+      {
+        title: "Fique offline por mais de 10 minutos",
+        body:
+          "O treino só começa depois desse intervalo. Entrar novamente antes disso cancela o ganho daquela saída.",
+      },
+      {
+        title: "Confira o contador",
+        body:
+          "A janela de Skills mostra quanto tempo de treino está disponível. O máximo treinado em uma saída é 12 horas.",
+      },
+      {
+        title: "Use exercício só com orçamento",
+        body:
+          "Exercise weapons aceleram o treino ativo, mas custam recursos. Para começar, constância offline e dinheiro para supplies valem mais.",
+      },
+    ],
+    checklist: [
+      "Premium ativa",
+      "Estátua de Distance Fighting ou cama",
+      "Mais de 10 minutos offline",
+      "Contador de treino disponível",
+    ],
+    warnings: [
+      "Treino offline é mais lento que treino ativo; ele funciona melhor como rotina, não como atalho instantâneo.",
+      "O contador limita a duração. Confira a janela de Skills antes de sair.",
+    ],
+    relatedSourceIds: ["official-offline-training"],
+    sourceUrl: "https://www.tibia.com/support/?entryid=178&subtopic=gethelp",
+    sourceName: "Tibia.com — FAQ oficial de Offline Training",
+    verifiedAt: LAST_VERIFIED,
+    patch: "Manual e FAQ oficiais consultados em 28/07/2026",
+    confidence: "alta",
+  },
+  {
     id: "promotion-stances",
     category: "combate",
+    minLevel: 20,
+    difficulty: "basico",
+    essential: true,
     title: "Promoção e stances de Royal Paladin",
     eyebrow: "Level 20",
     summary:
@@ -2030,7 +2163,8 @@ export const GUIDES: readonly Guide[] = [
     steps: [
       {
         title: "Reserve 20.000 gp",
-        body: "Com Premium Account e level 20, procure o NPC de promoção da sua cidade.",
+        body: "Com Premium Account e level 20, peça promoção a um dos quatro governantes oficiais; o custo é 20.000 gp.",
+        detail: ["King Tibianus em Thais", "Queen Eloise em Carlin", "Emperor Kruzak em Kazordoon", "Grand Vizier Ishebad em Ankrahmun"],
       },
       {
         title: "Use Sharpshooter para dano",
@@ -2052,12 +2186,177 @@ export const GUIDES: readonly Guide[] = [
       "Os valores de release foram reduzidos em 07/07/2026; use 32%, 6% e 12%, não os valores antigos.",
       "Dodge se aplica a ataques não adjacentes conforme a descrição oficial.",
     ],
-    relatedSourceIds: ["official-vocation-release", "official-vocation-final-tuning"],
+    relatedSourceIds: ["official-promotion", "official-vocation-release", "official-vocation-final-tuning"],
     ...OFFICIAL_FINAL_TUNING_2026,
+  },
+  {
+    id: "blessings-death-protection",
+    category: "seguranca",
+    minLevel: 8,
+    difficulty: "basico",
+    essential: true,
+    title: "Blessings: proteja seus itens e skills",
+    eyebrow: "Faça antes de arriscar o set",
+    summary:
+      "Blessings reduzem a penalidade de morte. Veja o ankh, complete as regulares e entenda quando Twist of Fate importa.",
+    estimatedTime: "5 min para conferir",
+    steps: [
+      {
+        title: "Abra o diálogo do ankh",
+        body:
+          "Clique no ankh do inventário. Cinza significa nenhuma blessing; amarelo significa pelo menos uma blessing; verde significa todas as blessings regulares e também Twist of Fate, quando ela estiver disponível no mundo. Se o inventário também ficar amarelo, o personagem tem Adventurer's Blessing.",
+      },
+      {
+        title: "Complete as blessings regulares",
+        body:
+          "Existem sete blessings regulares. Ter pelo menos cinco elimina a chance normal de perder mochila e equipamentos; todas as sete dão a maior redução disponível de skill e experiência.",
+      },
+      {
+        title: "Entenda Twist of Fate",
+        body:
+          "Em mundos compatíveis, Twist of Fate é a proteção de PvP: em uma morte PvP, ela preserva as cargas das blessings regulares e o Amulet of Loss.",
+      },
+      {
+        title: "Reconfira depois de morrer",
+        body:
+          "Uma morte consome cargas aplicáveis. Antes de voltar à hunt, abra o ankh novamente em vez de confiar na memória.",
+      },
+    ],
+    checklist: [
+      "Ankh conferido",
+      "Blessings regulares completas",
+      "Twist of Fate se o tipo de mundo exigir",
+      "Dinheiro de emergência fora da mochila",
+    ],
+    warnings: [
+      "Red skull e black skull têm regras severas e podem ignorar a proteção normal de itens.",
+      "Em Open PvP, Adventurer's Blessing protege iniciantes até o level 20, mas é perdida ao chegar ao 21 ou ao atacar outro jogador primeiro.",
+    ],
+    relatedSourceIds: ["official-death-blessings", "official-interface-manual"],
+    sourceUrl: "https://www.tibia.com/gameguides/?section=characters&subtopic=manual",
+    sourceName: "Tibia.com — Manual oficial de morte e blessings",
+    verifiedAt: LAST_VERIFIED,
+    patch: "Manual oficial consultado em 28/07/2026",
+    confidence: "alta",
+  },
+  {
+    id: "quiver-and-ammunition",
+    category: "equipamento",
+    minLevel: 8,
+    difficulty: "basico",
+    essential: true,
+    title: "Quiver, bows, crossbows e munição",
+    eyebrow: "Sem munição, não há disparo",
+    summary:
+      "Combine a arma com a munição correta e mantenha o quiver abastecido antes de sair do depot.",
+    estimatedTime: "4 min",
+    steps: [
+      {
+        title: "Equipe o quiver no slot de shield",
+        body:
+          "Bows e crossbows de Paladin consomem munição apenas de um quiver equipado. A mochila serve como reserva, não como fonte direta do disparo.",
+      },
+      {
+        title: "Faça a combinação correta",
+        body:
+          "Bow usa arrow; crossbow usa bolt. Armas de arremesso, como spears e stars, já são o próprio projétil e não usam munição separada.",
+      },
+      {
+        title: "Respeite o level da munição",
+        body:
+          "A arma e a munição podem ter requisitos diferentes. No Arsenal do RoyalPath, você pode selecionar itens futuros para simular, mas o cliente não permitirá o uso antes do level exigido.",
+      },
+      {
+        title: "Leve uma margem",
+        body:
+          "Calcule o consumo em uma volta curta e leve reserva na mochila para recarregar o quiver em local seguro.",
+      },
+      {
+        title: "Cuidado com conversão elemental",
+        body:
+          "Imbuements elementais de armas à distância não convertem Diamond Arrows nem munições que já causam dano elemental.",
+      },
+    ],
+    checklist: [
+      "Quiver equipado",
+      "Arrow para bow ou bolt para crossbow",
+      "Level dos dois itens atendido",
+      "Munição reserva",
+      "Capacidade restante para loot",
+    ],
+    warnings: [
+      "Trocar de bow para crossbow sem trocar a munição interrompe o dano.",
+      "Não use o número do simulador como confirmação de que o item já pode ser equipado no jogo.",
+    ],
+    relatedSourceIds: ["official-quiver-2020", "official-vocation-release"],
+    sourceUrl: "https://www.tibia.com/news/?id=5836&subtopic=newsarchive",
+    sourceName: "Tibia.com — Ajustes oficiais de Quiver",
+    verifiedAt: LAST_VERIFIED,
+    patch: "Regras do quiver e munição, com catálogo revisto em 28/07/2026",
+    confidence: "alta",
+  },
+  {
+    id: "protection-and-analyser",
+    category: "seguranca",
+    minLevel: 8,
+    difficulty: "basico",
+    essential: true,
+    title: "Proteção e Analyzer: teste sem adivinhar",
+    eyebrow: "Sobreviver vem antes do DPS",
+    summary:
+      "Descubra o dano recebido, troque a proteção certa e compare voltas curtas com o mesmo caminho.",
+    estimatedTime: "10–15 min por teste",
+    steps: [
+      {
+        title: "Descubra o elemento",
+        body:
+          "Use Bestiary, Damage Input Analyser e observação dos hits para identificar físico, fogo, terra, energia, gelo, holy ou death.",
+      },
+      {
+        title: "Monte um set de teste",
+        body:
+          "Priorize a proteção do dano que realmente ameaça você. Armor ajuda contra dano físico, mas não substitui proteção elemental.",
+      },
+      {
+        title: "Faça uma volta curta",
+        body:
+          "Repita a mesma rota por 10 a 15 minutos, com supplies e tamanho de pull parecidos. Mude uma peça por vez.",
+      },
+      {
+        title: "Leia os quatro sinais",
+        body:
+          "Compare maior hit recebido, dano por hora, gasto de cura e situações em que a vida caiu rápido. DPS só desempata depois da segurança.",
+      },
+      {
+        title: "Salve um set por contexto",
+        body:
+          "Um set de fogo pode ser pior em outra hunt. Nomeie backpacks ou presets pelo elemento para não sair com a proteção errada.",
+      },
+    ],
+    checklist: [
+      "Bestiary do monstro consultado",
+      "Damage Input Analyser aberto",
+      "Rota e duração equivalentes",
+      "Apenas uma mudança por teste",
+      "Saída de emergência conhecida",
+    ],
+    warnings: [
+      "Proteções percentuais de várias peças são compostas; não presuma que basta somar os números.",
+      "Se a vida oscila demais, reduza o pull mesmo que a média do analyzer pareça aceitável.",
+    ],
+    relatedSourceIds: ["official-interface-manual"],
+    sourceUrl: "https://www.tibia.com/gameguides/?section=interface&subtopic=manual",
+    sourceName: "Tibia.com — Manual oficial da interface e Analytics",
+    verifiedAt: LAST_VERIFIED,
+    patch: "Manual oficial consultado em 28/07/2026",
+    confidence: "alta",
   },
   {
     id: "rotacao-area",
     category: "combate",
+    minLevel: 50,
+    difficulty: "intermediario",
+    essential: true,
     title: "Rotação de área sem cancelar ataques",
     eyebrow: "O ritmo vale mais que o spam",
     summary:
@@ -2065,14 +2364,14 @@ export const GUIDES: readonly Guide[] = [
     estimatedTime: "15 min em uma hunt segura",
     steps: [
       {
-        title: "Ataque primeiro",
+        title: "Use a munição liberada no seu level",
         body:
-          "Dispare Diamond/Shatterstorm/Storm Arrow. A munição é a âncora; não use magia cedo a ponto de atrasar o próximo ataque.",
+          "No level 50, comece com Shatterstorm Arrow. As Storm Arrows chegam no level 125 e Diamond Arrow no 150. A munição é a âncora; não use magia cedo a ponto de atrasar o próximo ataque.",
       },
       {
         title: "Use a primeira área",
         body:
-          "Divine Caldera tem base power 150 após 07/07/2026. Escolha quando o formato e a resistência compensarem.",
+          "Divine Caldera é liberada no level 50 e tem base power 150 após 07/07/2026. Escolha quando o formato e a resistência compensarem.",
       },
       {
         title: "Dispare novamente",
@@ -2082,7 +2381,7 @@ export const GUIDES: readonly Guide[] = [
       {
         title: "Use a Barrage adequada",
         body:
-          "Divine Barrage tem base power 130, 4 s e 175 mana; Ethereal Barrage tem power 40, 4 s e 135 mana. Escolha santo ou físico por contexto.",
+          "Ethereal Barrage é liberada no level 60 e tem base power 40, 4 s e 135 mana. Divine Barrage chega no level 70, com base power 130, 4 s e 175 mana. Escolha físico ou holy pelo contexto.",
       },
       {
         title: "Cure e resete",
@@ -2101,12 +2400,189 @@ export const GUIDES: readonly Guide[] = [
       "A fórmula exata de dano de magias não é pública; qualquer simulador deve exibir uma aproximação.",
       "Diamond Arrow não recebe conversão elemental de imbuement.",
     ],
-    relatedSourceIds: ["official-vocation-release", "official-vocation-final-tuning"],
+    relatedSourceIds: [
+      "official-spell-library",
+      "official-vocation-release",
+      "official-vocation-final-tuning",
+    ],
     ...OFFICIAL_FINAL_TUNING_2026,
+  },
+  {
+    id: "bestiary-charms-prey",
+    category: "sistemas",
+    minLevel: 8,
+    difficulty: "intermediario",
+    essential: true,
+    title: "Bestiary, Charms e Prey sem confusão",
+    eyebrow: "Três sistemas, três funções",
+    summary:
+      "Complete criaturas para ganhar Charm Points, atribua bônus à espécie certa e use Prey somente quando ela combinar com sua hunt.",
+    estimatedTime: "8 min para planejar",
+    steps: [
+      {
+        title: "Abra o Bestiary",
+        body:
+          "Na Cyclopedia, procure a criatura da sua hunt. As mortes liberam estágios com atributos, resistências, locais e loot; completar a entrada concede Charm Points.",
+      },
+      {
+        title: "Rastreie poucas criaturas",
+        body:
+          "Escolha entradas que você já mata com segurança. O Bestiary Tracker mostra o progresso e evita trocar de objetivo antes de completar um estágio útil.",
+      },
+      {
+        title: "Separe Major de Minor Charm",
+        body:
+          "Major Charms usam Charm Points e exigem a entrada completa da criatura no Bestiary. Minor Charms usam Minor Charm Echoes e já podem ser atribuídos quando o estágio 2 da entrada estiver liberado. Uma criatura pode receber um de cada categoria.",
+      },
+      {
+        title: "Atribua pelo monstro, não pelo nome",
+        body:
+          "Confirme resistências e sua função. Dano elemental, sustain ou defesa só ajudam se fizerem sentido contra aquela criatura e naquela rota.",
+      },
+      {
+        title: "Use Prey como bônus temporário",
+        body:
+          "O Prey Dialog oferece criaturas e bônus por tempo limitado. Ative quando uma opção já fizer parte da sua hunt; rerolls e Wildcards têm custo.",
+      },
+    ],
+    checklist: [
+      "Criatura pesquisada na Cyclopedia",
+      "Bestiary Tracker ativo",
+      "Resistências conferidas",
+      "Charm atribuído à criatura correta",
+      "Tempo e custo do Prey conferidos",
+    ],
+    warnings: [
+      "Não escolha uma hunt perigosa apenas para aproveitar um Prey aleatório.",
+      "Remover ou redefinir Charms pode custar gold; leia a confirmação do cliente.",
+      "Valores e estágios de Charms mudam com updates; a Cyclopedia é a fonte final.",
+    ],
+    relatedSourceIds: ["official-interface-manual", "official-charm-overhaul"],
+    sourceUrl: "https://www.tibia.com/gameguides/?section=interface&subtopic=manual",
+    sourceName: "Tibia.com — Manual oficial de Cyclopedia, Bestiary e Prey",
+    verifiedAt: LAST_VERIFIED,
+    patch: "Manual e Charm Overhaul consultados em 28/07/2026",
+    confidence: "alta",
+  },
+  {
+    id: "wheel-of-destiny",
+    category: "sistemas",
+    minLevel: 51,
+    difficulty: "intermediario",
+    essential: true,
+    title: "Wheel of Destiny: primeira configuração",
+    eyebrow: "A partir do level 51",
+    summary:
+      "Use seus promotion points com um objetivo simples: sobreviver, sustentar a rotação ou reforçar o dano que você realmente usa.",
+    estimatedTime: "10 min no templo",
+    steps: [
+      {
+        title: "Confirme os requisitos",
+        body:
+          "Personagens promovidos com Premium recebem um promotion point por level a partir do 51.",
+      },
+      {
+        title: "Escolha um objetivo",
+        body:
+          "Para aprender uma hunt, comece por vida, mana, resistência e perks que reforçam sua rotação atual. Uma captura de tela ajuda a comparar depois.",
+      },
+      {
+        title: "Entenda os três tipos",
+        body:
+          "Dedication Perks crescem ponto a ponto; Conviction Perks são liberados ao completar o slice; Revelation Perks são os efeitos mais fortes dos quatro domínios.",
+      },
+      {
+        title: "Teste sem medo",
+        body:
+          "Aplicar pontos e experimentar não custa gold. Para remover ou resetar pontos já investidos, volte a um templo.",
+      },
+      {
+        title: "Compare na mesma hunt",
+        body:
+          "Faça duas voltas parecidas e observe dano, cura, mana e risco. A melhor Wheel é a que funciona no seu conteúdo, não a mais popular isoladamente.",
+      },
+    ],
+    checklist: [
+      "Level 51 ou mais",
+      "Personagem promovido",
+      "Premium ativa",
+      "Objetivo escolhido",
+      "Templo disponível para reset",
+    ],
+    warnings: [
+      "Copiar uma Wheel de level maior deixa lacunas; adapte aos pontos que você realmente tem.",
+      "Mudanças de update podem alterar perks. Leia a descrição dentro do cliente.",
+    ],
+    relatedSourceIds: ["official-wheel-of-destiny"],
+    sourceUrl: "https://www.tibia.com/news/?id=7013&subtopic=newsarchive",
+    sourceName: "Tibia.com — Wheel of Destiny",
+    verifiedAt: LAST_VERIFIED,
+    patch: "Regras oficiais da Wheel verificadas em 28/07/2026",
+    confidence: "alta",
+  },
+  {
+    id: "first-team-hunt",
+    category: "combate",
+    minLevel: 50,
+    difficulty: "intermediario",
+    essential: true,
+    title: "Primeira team hunt como Royal Paladin",
+    eyebrow: "Combine antes de entrar",
+    summary:
+      "Defina rota, função, chamada de perigo e supplies antes do primeiro pull. O time deve saber que você está aprendendo.",
+    estimatedTime: "10 min de preparação",
+    steps: [
+      {
+        title: "Diga que é sua primeira vez",
+        body:
+          "Combine o ponto de encontro, acesso, duração e ritmo. Pergunte quem lidera o caminho e qual chamada significa recuar.",
+      },
+      {
+        title: "Ative e confira Shared Experience",
+        body:
+          "Entre na party e confirme no ícone que a experiência compartilhada está ativa. O menor level deve ter pelo menos dois terços do maior; todos devem ficar a no máximo 30 campos do líder, podendo estar um andar acima ou abaixo; e cada membro precisa atacar uma criatura agressiva ou curar outro membro.",
+      },
+      {
+        title: "Entenda sua posição",
+        body:
+          "O RP costuma atacar em área, ajudar a organizar criaturas e proteger a rota do time. Não atravesse o bloqueio nem amplie o pull sem combinar.",
+      },
+      {
+        title: "Mantenha sua própria segurança",
+        body:
+          "Cure cedo, observe mana e mantenha uma saída visível. Avise quando supplies, cooldowns ou conexão não estiverem seguros.",
+      },
+      {
+        title: "Feche a sessão com números",
+        body:
+          "Compare duração, XP, loot, waste e maior dano recebido. Divisão de loot e custos deve ser combinada pelo grupo, não presumida.",
+      },
+    ],
+    checklist: [
+      "Acesso concluído",
+      "Party e Shared Experience conferidos",
+      "Função e chamada de recuo combinadas",
+      "Supplies com margem",
+      "Proteção correta",
+      "Regra de divisão de loot combinada",
+    ],
+    warnings: [
+      "Não acompanhe um ritmo que força você a esconder falta de mana ou perigo.",
+      "Se Shared Experience ficar inativa, pare em lugar seguro e descubra a causa antes de continuar.",
+    ],
+    relatedSourceIds: ["official-shared-experience", "official-interface-manual"],
+    sourceUrl: "https://www.tibia.com/support/?entryid=92&subtopic=gethelp",
+    sourceName: "Tibia.com — FAQ oficial de Shared Experience",
+    verifiedAt: LAST_VERIFIED,
+    patch: "FAQ oficial consultado em 29/07/2026",
+    confidence: "alta",
   },
   {
     id: "imbuements",
     category: "imbuement",
+    minLevel: 8,
+    difficulty: "intermediario",
+    essential: true,
     title: "Imbuements sem mistério",
     eyebrow: "20 horas por aplicação",
     summary:
@@ -2116,7 +2592,7 @@ export const GUIDES: readonly Guide[] = [
       {
         title: "Ative o Imbuing Shrine",
         body:
-          "Entregue 5 Heavy Old Tomes a Albinius para liberar o uso. Em seguida, procure um shrine disponível.",
+          "Quando o templo do seu mundo já estiver reconstruído, entregue 5 Heavy Old Tomes a Albinius para liberar o uso do Imbuing Shrine. Isso abre o acesso básico ao sistema; os Powerful continuam dependendo do boss correspondente ou de scroll.",
       },
       {
         title: "Retire o item do corpo",
@@ -2134,7 +2610,7 @@ export const GUIDES: readonly Guide[] = [
         detail: [
           "25 Vampire Teeth",
           "15 Bloody Pincers",
-          "5 Pieces of Dead Brain",
+          "5 Piece of Dead Brain",
         ],
       },
       {
@@ -2152,7 +2628,7 @@ export const GUIDES: readonly Guide[] = [
           "Com a base global atual, o resultado típico fica em 10% de chance e +50% de dano crítico extra antes de outras fontes.",
         detail: [
           "20 Protective Charms",
-          "25 Sabreteeth",
+          "25 Sabretooth",
           "5 Vexclaw Talons",
           "Strike soma +5 pontos percentuais de chance e +40 de dano crítico extra no Powerful.",
         ],
@@ -2160,7 +2636,7 @@ export const GUIDES: readonly Guide[] = [
       {
         title: "Distribua por item",
         body:
-          "No RP iniciante, arma costuma receber Strike + Void + Vampirism conforme slots; armor recebe Vampirism e helmet recebe Void/proteção.",
+          "No RP iniciante, a arma costuma receber Strike + Void + Vampirism conforme os slots; armor recebe Vampirism ou proteção elemental; helmet normalmente recebe Void ou Precision. Confirme a compatibilidade de cada item na janela do shrine antes de comprar materiais.",
       },
     ],
     checklist: [
@@ -2177,6 +2653,7 @@ export const GUIDES: readonly Guide[] = [
       "Preços dos materiais são do seu Market; compare custo por hora antes de aplicar.",
     ],
     relatedSourceIds: [
+      "official-equipment-manual",
       "official-imbuement-costs",
       "official-strike-2025",
       "official-imbuement-scrolls",
@@ -2187,10 +2664,13 @@ export const GUIDES: readonly Guide[] = [
   {
     id: "forge",
     category: "forge",
+    minLevel: 100,
+    difficulty: "avancado",
+    essential: false,
     title: "Exaltation Forge: só depois do essencial",
     eyebrow: "Tier não é upgrade gratuito",
     summary:
-      "Forge adiciona procs probabilísticos e pode consumir itens, gold, Dust e cores. Para um iniciante, gear, skills e imbuements vêm primeiro.",
+      "Forge adiciona ativações aleatórias (procs) e pode consumir itens, gold, Dust e cores. Para um iniciante, gear, skills e imbuements vêm primeiro.",
     estimatedTime: "Leitura de 12 min antes de clicar",
     steps: [
       {
@@ -2201,12 +2681,12 @@ export const GUIDES: readonly Guide[] = [
       {
         title: "Entenda o efeito do slot",
         body:
-          "Weapon recebe Onslaught (+60% de dano no proc), armor recebe Ruse (evita o ataque), helmet recebe Momentum (-2 s de cooldown), legs recebe Transcendence e boots recebe Amplification.",
+          "Weapon recebe Onslaught (+60% de dano na ativação aleatória, ou proc), armor recebe Ruse (evita o ataque), helmet recebe Momentum (-2 s de cooldown), legs recebe Transcendence e boots recebe Amplification.",
       },
       {
         title: "Fusion",
         body:
-          "Usa dois itens idênticos em nome e tier, sem imbuements, além de 100 Dust e gold. A base é 50%; um core leva a 65% e outro reduz o risco de perda.",
+          "Usa dois itens idênticos em nome e tier, sem imbuements, além de 100 Dust e gold. A base é 50%; um core leva a 65% e o segundo concede uma chance de preservar o tier do segundo item.",
       },
       {
         title: "Transfer",
@@ -2214,9 +2694,14 @@ export const GUIDES: readonly Guide[] = [
           "Move tier de um item fonte Tier 2+ para alvo Tier 0 da mesma classe. É garantido, consome a fonte e entrega tier do alvo um nível abaixo.",
       },
       {
-        title: "Convergence",
+        title: "Convergence Fusion",
         body:
-          "Para itens Classe 4 do mesmo slot, permite combinar itens diferentes com resultado garantido e custo maior de recursos.",
+          "Para itens Classe 4, permite fundir itens diferentes da mesma posição de equipamento (body slot) e do mesmo tier. O resultado é garantido, custa mais recursos e não ativa efeitos bônus da Fusion normal.",
+      },
+      {
+        title: "Convergence Transfer",
+        body:
+          "Também exclusiva da Classe 4, transfere o tier sem perder um nível. É uma operação diferente da Convergence Fusion e tem custo de gold bem maior.",
       },
       {
         title: "Decida pelo retorno",
@@ -2226,7 +2711,7 @@ export const GUIDES: readonly Guide[] = [
     ],
     checklist: [
       "Item e classe confirmados",
-      "Imbuements removidos/expirados quando exigido",
+      "Itens da operação sem imbuements",
       "Dust, cores e gold conferidos na interface",
       "Risco de falha entendido",
       "Backup financeiro mantido",
@@ -2242,6 +2727,9 @@ export const GUIDES: readonly Guide[] = [
   {
     id: "forge-proc-table",
     category: "forge",
+    minLevel: 100,
+    difficulty: "avancado",
+    essential: false,
     title: "Chances por Tier",
     eyebrow: "Probabilidade, não dano constante",
     summary:
@@ -2270,7 +2758,8 @@ export const GUIDES: readonly Guide[] = [
       },
       {
         title: "Amplification — boots",
-        body: "Multiplica a chance dos outros efeitos da Forge.",
+        body:
+          "Aumenta em cada porcentagem indicada a chance de ativação dos outros efeitos de Forge equipados; 57,4% não significa multiplicar a chance por 57,4.",
         detail: ["T1–T10: 2,5 · 5,4 · 9,1 · 13,6 · 18,9 · 25,0 · 31,9 · 39,6 · 48,1 · 57,4%"],
       },
     ],
@@ -2285,10 +2774,13 @@ export const GUIDES: readonly Guide[] = [
   {
     id: "weapon-proficiency",
     category: "proficiency",
+    minLevel: 200,
+    difficulty: "avancado",
+    essential: false,
     title: "Weapon Proficiency antes do upgrade",
     eyebrow: "A arma é também uma árvore",
     summary:
-      "Armas elegíveis podem ser evoluídas e customizadas. O Summer Update 2026 passou a permitir a troca de dois slots da skill tree.",
+      "Armas elegíveis podem ser evoluídas e customizadas. O Summer Update 2026 passou a permitir a substituição de até dois slots da árvore de bônus (perks).",
     estimatedTime: "8 min de planejamento",
     steps: [
       {
@@ -2299,12 +2791,17 @@ export const GUIDES: readonly Guide[] = [
       {
         title: "Escolha pela sua rotação",
         body:
-          "Se você joga principalmente em área, perks de Caldera/Barrage e sustain podem superar um bônus de single target.",
+          "Se você joga principalmente em área, perks de Caldera/Barrage e recuperação de vida/mana (sustain) podem superar um bônus de alvo único.",
       },
       {
-        title: "Use os dois swaps de 2026",
+        title: "Desbloqueie cada substituição",
         body:
-          "A atualização permite substituir dois slots da árvore; planeje a customização antes de fechar uma compra de alto valor.",
+          "O primeiro slot modificado custa 250 Dust e exige Proficiency Level 3 com a arma. O segundo custa 1.000 Dust e exige que a arma esteja dominada (mastered). O custo considera quantos slots estão modificados naquele momento.",
+      },
+      {
+        title: "Entenda o primeiro resultado",
+        body:
+          "Ao modificar um slot, o jogo sorteia um efeito no menor valor. Depois você pode refinar, maximizar, remodelar ou limpar a modificação; mudanças só podem ser feitas dentro de uma zona de proteção (Protection Zone).",
       },
       {
         title: "Compare no analyzer",
@@ -2324,12 +2821,118 @@ export const GUIDES: readonly Guide[] = [
       "Perks podem valer mais que um ponto isolado de ataque.",
       "A interface do cliente é a fonte final para os perks disponíveis na sua arma.",
     ],
-    relatedSourceIds: ["official-summer-2026", "wiki-sanguine-bow"],
-    ...OFFICIAL_SUMMER_2026,
+    relatedSourceIds: [
+      "official-weapon-proficiency-update",
+      "official-summer-2026",
+      "wiki-sanguine-bow",
+    ],
+    ...OFFICIAL_PROFICIENCY_2026,
   },
 ] as const;
 
 export const SOURCES: readonly Source[] = [
+  {
+    id: "official-offline-training",
+    name: "Offline Training FAQ",
+    publisher: "CipSoft / Tibia.com",
+    url: "https://www.tibia.com/support/?entryid=178&subtopic=gethelp",
+    kind: "oficial",
+    verifiedAt: LAST_VERIFIED,
+    patch: "FAQ vigente em 28/07/2026",
+    confidence: "alta",
+    note: "Fonte primária para o intervalo mínimo de 10 minutos e o limite de 12 horas.",
+  },
+  {
+    id: "official-promotion",
+    name: "Character Promotion FAQ",
+    publisher: "CipSoft / Tibia.com",
+    url: "https://www.tibia.com/support/?entryid=85&subtopic=gethelp",
+    kind: "oficial",
+    verifiedAt: LAST_VERIFIED,
+    patch: "FAQ vigente em 28/07/2026",
+    confidence: "alta",
+    note: "Fonte primária para Premium, level 20, custo de 20.000 gp e quatro governantes.",
+  },
+  {
+    id: "official-death-blessings",
+    name: "Manual — Death and Blessings",
+    publisher: "CipSoft / Tibia.com",
+    url: "https://www.tibia.com/gameguides/?section=characters&subtopic=manual",
+    kind: "oficial",
+    verifiedAt: LAST_VERIFIED,
+    patch: "Manual vigente em 28/07/2026",
+    confidence: "alta",
+    note: "Fonte primária para penalidade de morte, blessings regulares e proteção de itens.",
+  },
+  {
+    id: "official-equipment-manual",
+    name: "Manual — Imbuing, Fusion and Tier Transfer",
+    publisher: "CipSoft / Tibia.com",
+    url: "https://www.tibia.com/gameguides/?section=characters&subtopic=manual",
+    kind: "oficial",
+    verifiedAt: LAST_VERIFIED,
+    patch: "Manual vigente em 29/07/2026",
+    confidence: "alta",
+    note:
+      "Fonte primária para acesso ao Imbuing Shrine, item desequipado, duração e regras gerais de imbuing.",
+  },
+  {
+    id: "official-quiver-2020",
+    name: "Full List of Vocation Adjustments — Quiver",
+    publisher: "CipSoft / Tibia.com",
+    url: "https://www.tibia.com/news/?id=5836&subtopic=newsarchive",
+    kind: "oficial",
+    verifiedAt: LAST_VERIFIED,
+    patch: "Regras do quiver vigentes em 28/07/2026",
+    confidence: "alta",
+    note: "Fonte primária para quiver, consumo de munição e exceções de conversão elemental.",
+  },
+  {
+    id: "official-interface-manual",
+    name: "Manual — Interface, Analytics e Cyclopedia",
+    publisher: "CipSoft / Tibia.com",
+    url: "https://www.tibia.com/gameguides/?section=interface&subtopic=manual",
+    kind: "oficial",
+    verifiedAt: LAST_VERIFIED,
+    patch: "Manual vigente em 28/07/2026",
+    confidence: "alta",
+    note: "Fonte primária para Analyzer, Bestiary, Prey, Wheel e ferramentas de party.",
+  },
+  {
+    id: "official-shared-experience",
+    name: "Shared Experience Points Not Distributed Equally",
+    publisher: "CipSoft / Tibia.com Support",
+    url: "https://www.tibia.com/support/?entryid=92&subtopic=gethelp",
+    kind: "oficial",
+    verifiedAt: LAST_VERIFIED,
+    patch: "FAQ vigente em 29/07/2026",
+    confidence: "alta",
+    note:
+      "Fonte primária para diferença máxima de level, distância do líder e participação ativa na party.",
+  },
+  {
+    id: "official-charm-overhaul",
+    name: "Winter Update 2024 — Charm Overhaul Final Changes",
+    publisher: "CipSoft / Tibia.com",
+    url: "https://www.tibia.com/news/?id=8140&subtopic=newsarchive",
+    kind: "oficial",
+    verifiedAt: LAST_VERIFIED,
+    patch: "Regras finais do Charm Overhaul, 21/11/2024",
+    confidence: "alta",
+    note:
+      "Fonte primária para Minor Charm no estágio 2, custos, estágios e atribuição simultânea.",
+  },
+  {
+    id: "official-wheel-of-destiny",
+    name: "Wheel of Destiny",
+    publisher: "CipSoft / Tibia.com",
+    url: "https://www.tibia.com/news/?id=7013&subtopic=newsarchive",
+    kind: "oficial",
+    verifiedAt: LAST_VERIFIED,
+    patch: "Sistema verificado em 28/07/2026",
+    confidence: "alta",
+    note: "Fonte primária para requisitos, promotion points, perks e reset no templo.",
+  },
   {
     id: "official-vocation-release",
     name: "Vocation Adjustments Release State",
@@ -2374,7 +2977,8 @@ export const SOURCES: readonly Source[] = [
     verifiedAt: LAST_VERIFIED,
     patch: "27/01/2026",
     confidence: "alta",
-    note: "Confirma que spells são concedidas automaticamente e sem custo.",
+    note:
+      "Confirma a liberação automática e gratuita das spells antes ensinadas por trainers e lista as exceções de starting spells, Wheel, quests, shrines e NPCs específicos.",
   },
   {
     id: "official-summer-2026",
@@ -2387,6 +2991,18 @@ export const SOURCES: readonly Source[] = [
     confidence: "alta",
     note:
       "Confirma Moonsilver como linha de armas mais poderosa, Stellar/customização e mudanças na Weapon Proficiency.",
+  },
+  {
+    id: "official-weapon-proficiency-update",
+    name: "Weapon Proficiency Update",
+    publisher: "CipSoft / Tibia.com",
+    url: "https://www.tibia.com/news/?id=8850&subtopic=newsarchive",
+    kind: "oficial",
+    verifiedAt: LAST_VERIFIED,
+    patch: "22/06/2026",
+    confidence: "alta",
+    note:
+      "Fonte primária para custos em Dust, requisitos, sorteio inicial e alterações apenas em Protection Zone.",
   },
   {
     id: "official-imbuement-costs",
@@ -2430,7 +3046,8 @@ export const SOURCES: readonly Source[] = [
     verifiedAt: LAST_VERIFIED,
     patch: "Consultado após o Summer Update 2026",
     confidence: "média",
-    note: "Materiais, duração, compatibilidade e passos operacionais.",
+    note:
+      "Fonte comunitária usada para materiais e compatibilidade entre imbuements e slots; regras gerais são apoiadas pelas fontes oficiais relacionadas.",
   },
   {
     id: "official-forge-faq",
@@ -2516,10 +3133,10 @@ export const SOURCES: readonly Source[] = [
     url: "https://www.tibiabuddy.com/blog/paladin-hunting-guide-2026",
     kind: "guia-comunitário",
     verifiedAt: LAST_VERIFIED,
-    patch: "Consultado após o rebalance de 2026",
+    patch: "Referência pré-rebalance, reclassificada em 29/07/2026",
     confidence: "baixa",
     note:
-      "Usado para opções e faixas iniciais. Métricas altas antigas foram omitidas; Girtablilu é exibida como teste comunitário variável.",
+      "Usado somente para opções e faixas iniciais não retestadas após o rebalance; métricas altas antigas foram omitidas. Girtablilu é exibida separadamente como teste comunitário variável.",
   },
   {
     id: "wiki-girtablilu",

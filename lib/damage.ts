@@ -21,6 +21,27 @@ export type PaladinStance =
   | "sharpshooter"
   | "divine-defiance";
 
+export type CombatSettingsState = {
+  stance: PaladinStance;
+  resistance: number;
+  forgeTier: number;
+  powerfulStrike: boolean;
+  powerfulVamp: boolean;
+  powerfulVoid: boolean;
+  accuracyOverride: number | null;
+};
+
+export type ImbuementKey =
+  | "powerfulStrike"
+  | "powerfulVamp"
+  | "powerfulVoid";
+export type ImbuementEquipmentSlot = "weapon" | "armor" | "head";
+export type ImbuementCapacities = Record<ImbuementEquipmentSlot, number>;
+export type ImbuementAllocation = {
+  placements: Partial<Record<ImbuementKey, ImbuementEquipmentSlot>>;
+  remaining: ImbuementCapacities;
+};
+
 export type DamageRange = {
   min: number;
   average: number;
@@ -179,7 +200,7 @@ export type LevelAwareCycleEstimate = {
   divineBarrage: SpellProxyEstimate | null;
   assumptions: {
     durationSeconds: 4;
-    autoAttacks: 2;
+    autoAttacks: 0 | 2;
     calderaCasts: 0 | 1;
     barrageCasts: 0 | 1;
     primaryTargetOnly: true;
@@ -214,6 +235,7 @@ const ONSLAUGHT_EXTRA_DAMAGE = 60;
 
 const AUTO_ATTACK_CAVEATS = [
   "Faixa estimada; a distribuição interna exata não é pública.",
+  "Precisão é uma aproximação comparativa; a fórmula oficial de acerto não é pública.",
   "Não inclui armadura, shielding, charms, prey, Wheel ou proficiência.",
   "Leech considera somente o alvo primário e o dano esperado desta tentativa.",
 ] as const;
@@ -242,6 +264,118 @@ function percent(
   max = 100,
 ): number {
   return clamp(finiteOr(value, fallback), min, max);
+}
+
+function asUnknownRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+/**
+ * Runtime boundary for localStorage/UI state. It intentionally accepts only
+ * actual booleans and finite numbers; numeric strings and truthy strings are
+ * rejected instead of silently changing a simulation.
+ */
+export function sanitizeStoredSettings(
+  value: unknown,
+  maximumForgeTier = 10,
+): CombatSettingsState {
+  const source = asUnknownRecord(value);
+  const stance: PaladinStance =
+    source.stance === "neutral" ||
+      source.stance === "sharpshooter" ||
+      source.stance === "divine-defiance"
+      ? source.stance
+      : "sharpshooter";
+  const resistance =
+    typeof source.resistance === "number" &&
+      Number.isFinite(source.resistance)
+      ? Math.round(clamp(source.resistance, -30, 80))
+      : 0;
+  const safeMaximumTier = Math.max(
+    0,
+    Math.trunc(finiteOr(maximumForgeTier, 0)),
+  );
+  const forgeTier =
+    typeof source.forgeTier === "number" &&
+      Number.isFinite(source.forgeTier)
+      ? Math.trunc(clamp(source.forgeTier, 0, safeMaximumTier))
+      : 0;
+  const accuracyOverride =
+    typeof source.accuracyOverride === "number" &&
+      Number.isFinite(source.accuracyOverride)
+      ? Math.round(clamp(source.accuracyOverride, 0, 100))
+      : null;
+
+  return {
+    stance,
+    resistance,
+    forgeTier,
+    powerfulStrike: source.powerfulStrike === true,
+    powerfulVamp: source.powerfulVamp === true,
+    powerfulVoid: source.powerfulVoid === true,
+    accuracyOverride,
+  };
+}
+
+const IMBUEMENT_ORDER: readonly ImbuementKey[] = [
+  "powerfulStrike",
+  "powerfulVamp",
+  "powerfulVoid",
+];
+
+const IMBUEMENT_ELIGIBLE_SLOTS: Readonly<
+  Record<ImbuementKey, readonly ImbuementEquipmentSlot[]>
+> = {
+  powerfulStrike: ["weapon"],
+  // Prefer the dedicated equipment piece so the weapon remains available to
+  // the effect that has no alternative slot.
+  powerfulVamp: ["armor", "weapon"],
+  powerfulVoid: ["head", "weapon"],
+};
+
+function normalizeImbuementCapacity(value: number | undefined): number {
+  return Math.max(0, Math.trunc(finiteOr(value, 0)));
+}
+
+/**
+ * Places active imbuements on real eligible pieces while sharing each item's
+ * finite slot capacity. The deterministic order protects the weapon slot for
+ * Strike, then prefers armor for Vampirism and helmet for Void.
+ */
+export function allocateImbuements(
+  toggles: Partial<Record<ImbuementKey, boolean>>,
+  capacities: Partial<ImbuementCapacities>,
+): ImbuementAllocation {
+  const remaining: ImbuementCapacities = {
+    weapon: normalizeImbuementCapacity(capacities.weapon),
+    armor: normalizeImbuementCapacity(capacities.armor),
+    head: normalizeImbuementCapacity(capacities.head),
+  };
+  const placements: ImbuementAllocation["placements"] = {};
+
+  for (const key of IMBUEMENT_ORDER) {
+    if (toggles[key] !== true) continue;
+    const slot = IMBUEMENT_ELIGIBLE_SLOTS[key].find(
+      (candidate) => remaining[candidate] > 0,
+    );
+    if (!slot) continue;
+    placements[key] = slot;
+    remaining[slot] -= 1;
+  }
+
+  return { placements, remaining };
+}
+
+export function canAllocateAllImbuements(
+  toggles: Partial<Record<ImbuementKey, boolean>>,
+  capacities: Partial<ImbuementCapacities>,
+): boolean {
+  const allocation = allocateImbuements(toggles, capacities);
+  return IMBUEMENT_ORDER.every(
+    (key) => toggles[key] !== true || allocation.placements[key] !== undefined,
+  );
 }
 
 function scaleRange(range: DamageRange, multiplier: number): DamageRange {
@@ -369,6 +503,89 @@ export function accuracyMultiplier(
   accuracyPercent: number | undefined,
 ): number {
   return percent(accuracyPercent, 100) / 100;
+}
+
+/**
+ * Beginner-facing accuracy proxy for catalog items that expose a community
+ * base chance and a printed Hit modifier. The 90% default remains an explicit
+ * fallback for ammunition without a catalogued base.
+ */
+export function approximateRangedAccuracy(
+  hitModifier: number | undefined,
+  conservativeBasePercent = 90,
+): number {
+  return clamp(
+    finiteOr(conservativeBasePercent, 90) + finiteOr(hitModifier, 0),
+    0,
+    100,
+  );
+}
+
+export type RangedAccuracyItemKind = "ammo" | "thrown";
+export type RangedAccuracyProfile = {
+  basePercent: number;
+  isFallback: boolean;
+};
+
+const COMMUNITY_AMMO_ACCURACY = new Map<string, number>([
+  ["arrow", 91],
+  ["bolt", 87],
+  ["poison arrow", 91],
+  ["earth arrow", 91],
+  ["flaming arrow", 91],
+  ["flash arrow", 91],
+  ["shiver arrow", 91],
+  ["sniper arrow", 100],
+  ["tarsal arrow", 94],
+  ["onyx arrow", 94],
+  ["vortex bolt", 89],
+  ["power bolt", 91],
+  ["infernal bolt", 91],
+  ["spectral bolt", 91],
+  ["drill bolt", 90],
+  ["prismatic bolt", 90],
+  ["envenomed arrow", 93],
+  ["crystalline arrow", 95],
+  ["diamond arrow", 100],
+  ["burst arrow", 100],
+]);
+
+const COMMUNITY_THROWN_ACCURACY = new Map<string, number>([
+  ["small stone", 76],
+  ["spear", 76],
+  ["throwing knife", 76],
+  ["throwing star", 76],
+  ["viper star", 76],
+  ["hunting spear", 80],
+  ["royal spear", 80],
+  ["enchanted spear", 80],
+  ["assassin star", 96],
+]);
+
+export function communityRangedAccuracyBase(
+  itemName: string | undefined,
+  kind: RangedAccuracyItemKind,
+): number {
+  return communityRangedAccuracyProfile(itemName, kind).basePercent;
+}
+
+export function communityRangedAccuracyProfile(
+  itemName: string | undefined,
+  kind: RangedAccuracyItemKind,
+): RangedAccuracyProfile {
+  const normalizedName = itemName?.trim().toLocaleLowerCase("en-US") ?? "";
+  if (kind === "thrown") {
+    const catalogued = COMMUNITY_THROWN_ACCURACY.get(normalizedName);
+    return {
+      basePercent: catalogued ?? 75,
+      isFallback: catalogued === undefined,
+    };
+  }
+  const catalogued = COMMUNITY_AMMO_ACCURACY.get(normalizedName);
+  return {
+    basePercent: catalogued ?? 90,
+    isFallback: catalogued === undefined,
+  };
 }
 
 export function estimateLeech(
@@ -649,6 +866,49 @@ export function estimateLevelAwareCycle(
       ...(canUseCaldera || canUseBarrage ? SPELL_CAVEATS : []),
       "O ciclo só inclui spells liberadas pelo level informado.",
       "Onslaught em spells fica desligado por padrão.",
+    ],
+  };
+}
+
+/**
+ * The simulator should not mix a broken equipment combination with a
+ * spell-only positive result. This presentation gate keeps the engine's
+ * estimator reusable while guaranteeing that every offensive value shown for
+ * an incompatible loadout is zero.
+ */
+export function gateIncompatibleLevelAwareCycle(
+  cycle: LevelAwareCycleEstimate,
+  compatible: boolean,
+): LevelAwareCycleEstimate {
+  if (compatible) return cycle;
+
+  const zeroRange: DamageRange = { min: 0, average: 0, max: 0 };
+  return {
+    ...cycle,
+    autoAttack: {
+      ...cycle.autoAttack,
+      raw: zeroRange,
+      afterResistance: zeroRange,
+      accuracyMultiplier: 0,
+      expectedDamageOnHit: 0,
+      expectedDamagePerAttempt: 0,
+      primaryTargetLeech: { life: 0, mana: 0 },
+    },
+    divineCaldera: null,
+    divineBarrage: null,
+    assumptions: {
+      ...cycle.assumptions,
+      autoAttacks: 0,
+      calderaCasts: 0,
+      barrageCasts: 0,
+    },
+    rotationLabel: "Corrija o loadout para estimar o ciclo",
+    expectedDamage: 0,
+    expectedDps: 0,
+    primaryTargetLeech: { life: 0, mana: 0 },
+    caveats: [
+      ...cycle.caveats,
+      "Resultados ofensivos ocultados porque o loadout está incompatível.",
     ],
   };
 }

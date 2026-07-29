@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+const DEFAULT_SITE_URL =
+  "https://royalpath-rp-guide.joaovitorvelloso88.chatgpt.site/";
+const expectedSiteUrl =
+  process.env.NEXT_PUBLIC_SITE_URL ?? DEFAULT_SITE_URL;
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 async function render() {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
@@ -39,25 +48,39 @@ test("server-renders the RoyalPath application shell", async () => {
   assert.match(html, /Guia para quem está começando/);
   assert.match(html, /Vida máxima/);
   assert.match(html, /Mana máxima/);
-  assert.match(html, /DPS esperado/);
-  assert.match(html, /Defesa do set/);
+  assert.match(html, /DPS estimado/);
+  assert.match(html, /Estimativa comparativa em 1 alvo/);
+  assert.match(html, /Armadura e proteção física/);
+  assert.match(html, /valor bruto, não redução direta/);
   assert.match(html, /projeto 100% produzido com IA/i);
   assert.match(html, /sem fins lucrativos/i);
   assert.match(html, /id="character-level"/);
   assert.match(html, /aria-label="Navegação principal"/);
+  assert.match(html, /Tutoriais/);
+  assert.match(html, /Meu Paladin/);
+  assert.match(html, /Manual do aventureiro/);
 });
 
 test("production output has absolute social metadata and no starter residue", async () => {
   const response = await render();
   const html = await response.text();
+  const baseUrl = expectedSiteUrl.endsWith("/")
+    ? expectedSiteUrl
+    : `${expectedSiteUrl}/`;
 
   assert.match(
     html,
-    /<meta[^>]+property="og:image"[^>]+content="https:\/\/jvvtr\.github\.io\/royalpath-tibia-rp\/og\.png"/i,
+    new RegExp(
+      `<meta[^>]+property="og:image"[^>]+content="${escapeRegExp(baseUrl)}og\\.png"`,
+      "i",
+    ),
   );
   assert.match(
     html,
-    /<link[^>]+rel="icon"[^>]+href="https:\/\/jvvtr\.github\.io\/royalpath-tibia-rp\/favicon\.png"/i,
+    new RegExp(
+      `<link[^>]+rel="icon"[^>]+href="${escapeRegExp(baseUrl)}favicon\\.png"`,
+      "i",
+    ),
   );
   assert.doesNotMatch(html, /codex-preview|SkeletonPreview|taking shape/i);
   assert.doesNotMatch(html, /react-loading-skeleton/i);
