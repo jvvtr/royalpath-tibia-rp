@@ -4,18 +4,25 @@ import test from "node:test";
 import {
   DAMAGE_MODEL_VERSION,
   accuracyMultiplier,
+  allocateImbuements,
+  approximateRangedAccuracy,
   applyStanceEffects,
   baseDamage,
+  canAllocateAllImbuements,
   combinedProcExpectedMultiplier,
+  communityRangedAccuracyBase,
+  communityRangedAccuracyProfile,
   criticalExpectedMultiplier,
   estimateAutoAttack,
   estimateFourSecondCycle,
   estimateLevelAwareCycle,
   estimateLeech,
   estimateSpellProxy,
+  gateIncompatibleLevelAwareCycle,
   onslaughtChance,
   onslaughtExpectedMultiplier,
   resistanceMultiplier,
+  sanitizeStoredSettings,
 } from "../lib/damage.ts";
 
 const closeTo = (actual, expected, tolerance = 1e-9) => {
@@ -137,6 +144,155 @@ test("resistance and accuracy reduce expected damage without falsifying raw dama
   closeTo(accuracyMultiplier(75), 0.75);
 });
 
+test("printed Hit changes the conservative accuracy proxy and expected DPS", () => {
+  assert.equal(approximateRangedAccuracy(undefined), 90);
+  assert.equal(approximateRangedAccuracy(3), 93);
+  assert.equal(approximateRangedAccuracy(15), 100);
+  assert.equal(approximateRangedAccuracy(-100), 0);
+
+  const withoutHit = estimateAutoAttack({
+    level: 100,
+    distance: 90,
+    ammunitionAttack: 65,
+    weaponAttackModifier: 0,
+    accuracyPercent: approximateRangedAccuracy(0),
+  });
+  const elvishHitProxy = estimateAutoAttack({
+    level: 100,
+    distance: 90,
+    ammunitionAttack: 65,
+    weaponAttackModifier: 0,
+    accuracyPercent: approximateRangedAccuracy(3),
+  });
+
+  assert.ok(
+    elvishHitProxy.expectedDamagePerAttempt >
+      withoutHit.expectedDamagePerAttempt,
+  );
+  closeTo(
+    elvishHitProxy.expectedDamagePerAttempt /
+      withoutHit.expectedDamagePerAttempt,
+    93 / 90,
+  );
+  assert.match(
+    elvishHitProxy.caveats.join(" "),
+    /Precisão é uma aproximação/i,
+  );
+});
+
+test("community accuracy bases combine with printed Hit", () => {
+  assert.equal(
+    approximateRangedAccuracy(
+      5,
+      communityRangedAccuracyBase("Crystalline Arrow", "ammo"),
+    ),
+    100,
+  );
+  assert.equal(
+    approximateRangedAccuracy(
+      6,
+      communityRangedAccuracyBase("Spectral Bolt", "ammo"),
+    ),
+    97,
+  );
+  assert.equal(
+    approximateRangedAccuracy(
+      -20,
+      communityRangedAccuracyBase("Bolt", "ammo"),
+    ),
+    67,
+  );
+  assert.equal(
+    approximateRangedAccuracy(
+      0,
+      communityRangedAccuracyBase("Diamond Arrow", "ammo"),
+    ),
+    100,
+  );
+  assert.deepEqual(
+    communityRangedAccuracyProfile("Unknown Storm Arrow", "ammo"),
+    { basePercent: 90, isFallback: true },
+  );
+  assert.deepEqual(
+    communityRangedAccuracyProfile("Royal Spear", "thrown"),
+    { basePercent: 80, isFallback: false },
+  );
+});
+
+test("stored simulator settings are sanitized at runtime", () => {
+  assert.deepEqual(
+    sanitizeStoredSettings({
+      stance: "invalid",
+      resistance: 999,
+      forgeTier: 8.9,
+      powerfulStrike: "true",
+      powerfulVamp: true,
+      powerfulVoid: 1,
+      accuracyOverride: 130,
+    }, 3),
+    {
+      stance: "sharpshooter",
+      resistance: 80,
+      forgeTier: 3,
+      powerfulStrike: false,
+      powerfulVamp: true,
+      powerfulVoid: false,
+      accuracyOverride: 100,
+    },
+  );
+
+  assert.deepEqual(sanitizeStoredSettings({
+    stance: "divine-defiance",
+    resistance: -31,
+    forgeTier: -2,
+    powerfulStrike: true,
+    accuracyOverride: "97",
+  }, 10), {
+    stance: "divine-defiance",
+    resistance: -30,
+    forgeTier: 0,
+    powerfulStrike: true,
+    powerfulVamp: false,
+    powerfulVoid: false,
+    accuracyOverride: null,
+  });
+});
+
+test("imbuements share capacity across eligible weapon, armor and helmet", () => {
+  const allocation = allocateImbuements({
+    powerfulStrike: true,
+    powerfulVamp: true,
+    powerfulVoid: true,
+  }, {
+    weapon: 2,
+    armor: 1,
+    head: 1,
+  });
+
+  assert.deepEqual(allocation.placements, {
+    powerfulStrike: "weapon",
+    powerfulVamp: "armor",
+    powerfulVoid: "head",
+  });
+  assert.equal(canAllocateAllImbuements({
+    powerfulStrike: true,
+    powerfulVamp: true,
+    powerfulVoid: true,
+  }, {
+    weapon: 1,
+    armor: 0,
+    head: 0,
+  }), false);
+  assert.equal(canAllocateAllImbuements({
+    powerfulVamp: true,
+    powerfulVoid: true,
+  }, {
+    weapon: 0,
+    armor: 1,
+    head: 1,
+  }), true);
+});
+
 test("spell proxy uses Divine Defiance holy-magic conversion", () => {
   const result = estimateSpellProxy({
     level: 400,
@@ -250,6 +406,50 @@ test("beginner cycle only includes spells unlocked at the selected level", () =>
   assert.equal(
     atBarrage.rotationLabel,
     "2 ataques + Caldera + Barrage em 4 s",
+  );
+});
+
+test("incompatible loadouts expose no positive offensive result", () => {
+  const estimated = estimateLevelAwareCycle({
+    autoAttack: {
+      level: 150,
+      distance: 100,
+      magicLevel: 25,
+      ammunitionAttack: 37,
+      weaponAttackModifier: 5,
+      accuracyPercent: 100,
+      lifeLeechPercent: 25,
+      manaLeechPercent: 8,
+    },
+  });
+  assert.ok(estimated.expectedDps > 0);
+  assert.ok(estimated.divineCaldera);
+  assert.ok(estimated.divineBarrage);
+
+  const gated = gateIncompatibleLevelAwareCycle(estimated, false);
+  assert.equal(gated.expectedDamage, 0);
+  assert.equal(gated.expectedDps, 0);
+  assert.equal(gated.autoAttack.expectedDamageOnHit, 0);
+  assert.equal(gated.autoAttack.expectedDamagePerAttempt, 0);
+  assert.deepEqual(gated.autoAttack.raw, {
+    min: 0,
+    average: 0,
+    max: 0,
+  });
+  assert.equal(gated.divineCaldera, null);
+  assert.equal(gated.divineBarrage, null);
+  assert.deepEqual(gated.primaryTargetLeech, { life: 0, mana: 0 });
+  assert.deepEqual(gated.assumptions, {
+    durationSeconds: 4,
+    autoAttacks: 0,
+    calderaCasts: 0,
+    barrageCasts: 0,
+    primaryTargetOnly: true,
+  });
+  assert.match(gated.rotationLabel, /Corrija o loadout/);
+  assert.equal(
+    gateIncompatibleLevelAwareCycle(estimated, true),
+    estimated,
   );
 });
 

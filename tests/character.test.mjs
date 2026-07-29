@@ -42,6 +42,10 @@ test("character profile aggregates item attributes without app dependencies", ()
         magic: 1,
         protection: ["físico +5%", "fogo +14%"],
       },
+      {
+        id: "example-shield",
+        defense: 37,
+      },
     ],
   });
 
@@ -52,6 +56,7 @@ test("character profile aggregates item attributes without app dependencies", ()
     mana: 2_970,
     capacity: 4_310,
     armor: 14,
+    defense: 37,
     distance: 111,
     magic: 31,
     protections: {
@@ -62,6 +67,8 @@ test("character profile aggregates item attributes without app dependencies", ()
       ice: 0,
       holy: 0,
       death: 0,
+      lifeDrain: 0,
+      manaDrain: 0,
     },
     armorReduction: { min: 7, max: 13 },
   });
@@ -77,6 +84,7 @@ test("character profile aggregates item attributes without app dependencies", ()
     mana: 90,
     capacity: 470,
     armor: 0,
+    defense: 0,
     distance: 10,
     magic: 0,
     protections: {
@@ -87,6 +95,8 @@ test("character profile aggregates item attributes without app dependencies", ()
       ice: 0,
       holy: 0,
       death: 0,
+      lifeDrain: 0,
+      manaDrain: 0,
     },
     armorReduction: { min: 0, max: 0 },
   });
@@ -111,12 +121,42 @@ test("protections compose multiplicatively, including duplicates in one item", (
   assert.equal(protections.fire, 28);
   assert.equal(protections.earth, 9.7525);
   assert.equal(protections.energy, 0);
+  assert.equal(protections.lifeDrain, 0);
+  assert.equal(protections.manaDrain, 0);
 
   assert.deepEqual(parseProtection("fisico +5%"), {
     type: "physical",
     percent: 5,
   });
   assert.equal(parseProtection("speed +20"), null);
+});
+
+test("life drain and mana drain protections are parsed and combined", () => {
+  const protections = aggregateProtections([
+    {
+      protection: [
+        "life drain +20%",
+        "mana drain +30%",
+      ],
+    },
+    {
+      protection: [
+        "dreno de vida +10%",
+        "dreno de mana +5%",
+      ],
+    },
+  ]);
+
+  assert.equal(protections.lifeDrain, 28);
+  assert.equal(protections.manaDrain, 33.5);
+  assert.deepEqual(parseProtection("life drain +50%"), {
+    type: "lifeDrain",
+    percent: 50,
+  });
+  assert.deepEqual(parseProtection("dreno de mana +25%"), {
+    type: "manaDrain",
+    percent: 25,
+  });
 });
 
 test("negative item penalties reduce the combined protection", () => {
@@ -182,6 +222,15 @@ test("invalid character inputs fail explicitly", () => {
       items: [{ armor: Number.POSITIVE_INFINITY }],
     }),
     TypeError,
+  );
+  assert.throws(
+    () => calculateCharacterStats({
+      level: 8,
+      distance: 10,
+      magic: 0,
+      items: [{ defense: -1 }],
+    }),
+    RangeError,
   );
   assert.throws(
     () => aggregateProtections([

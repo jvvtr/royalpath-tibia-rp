@@ -2,8 +2,8 @@
 
 Guia pessoal, gratuito e não oficial para **iniciantes de Royal Paladin** no
 Tibia. O app transforma level, skills e equipamentos em um resumo simples de
-vida, mana, capacidade, defesa e DPS esperado, sem esconder as limitações da
-estimativa.
+vida, mana, capacidade, armadura, proteção física e DPS comparativo em um alvo,
+sem esconder as limitações da estimativa.
 
 > Pesquisa, arquitetura, conteúdo, identidade visual, código e testes deste
 > projeto foram produzidos **100% com auxílio de inteligência artificial**.
@@ -12,17 +12,28 @@ estimativa.
 ## O que já está incluído
 
 - início em três passos: informe o personagem, monte o set e leia o resultado;
-- Arsenal visual por slot, com a imagem do item selecionado;
-- vida, mana, capacidade, armor e proteções calculadas a partir do perfil;
-- DPS comparativo com uma rotação adequada ao level informado;
+- Arsenal pesquisável com 555 itens utilizáveis por Paladin, incluindo 58 escudos e 27 munições;
+- sprites locais, filtros por slot e aviso de level sem bloquear simulações futuras;
+- bows/crossbows usam quiver + munição compatível; armas de arremesso usam shield;
+- vida, mana, capacidade, armor e proteções calculadas separadamente; o valor
+  bruto de defesa da arma/escudo não é apresentado como redução direta;
+- DPS comparativo em um alvo com um ciclo simplificado adequado ao level informado;
 - hunts com foco e margem de segurança para iniciantes;
-- jornada do level 8 ao 1000+ e guias de sistemas em uma única seção;
+- aba de Tutoriais com treino, promoção, blessings, quiver, imbuements e sistemas;
+- Jornada do level 8 ao 1000+ focada em progressão e marcos;
 - persistência local de level, skills, metas, loadout e opções avançadas;
-- navegação responsiva com cinco destinos claros em desktop e celular.
+- layout responsivo inspirado na estrutura funcional do Tibia.com, criado apenas com CSS;
+- seis destinos claros no menu lateral do desktop e no menu superior móvel.
 
-O conteúdo foi revisado em **28 de julho de 2026**, para o Tibia 15.30. Métricas
-de hunts são observações comunitárias e podem variar por skills, stamina, prey,
-charms, rota, Market e atualizações.
+O catálogo é sincronizado de fontes comunitárias, mas as sugestões automáticas usam
+uma seleção curada para evitar que itens cosméticos ou situacionais virem recomendação
+por acidente. Itens acima do level continuam selecionáveis e aparecem como simulação hipotética.
+
+O conteúdo foi revisado em **29 de julho de 2026**. As faixas comunitárias de
+hunts abaixo do level 80 são referências anteriores ao rebalance de
+junho/julho de 2026, não retestes pós-patch. Acima dessa faixa, números sem
+reteste claro são omitidos. Todo resultado ainda varia por skills, stamina,
+prey, charms, rota, Market e atualizações.
 
 ## Rodando localmente
 
@@ -34,6 +45,15 @@ npm run dev
 ```
 
 Abra `http://localhost:3000`.
+
+Para atualizar o catálogo e baixar novamente os sprites a partir das fontes
+registradas no manifesto:
+
+```bash
+npm run sync:items
+```
+
+O sincronizador exige acesso à internet; revise o diff e rode os testes antes de publicar.
 
 ## Publicação fácil no GitHub Pages
 
@@ -54,9 +74,9 @@ npm run test:pages
 ```
 
 O comando cria `out/`, aplica automaticamente o subdiretório correto do
-repositório, verifica o HTML e confirma os 44 sprites do Arsenal. Em forks, o
-nome do dono e do repositório são inferidos pelo GitHub Actions; domínio próprio
-também é respeitado pelos dados fornecidos pelo Pages.
+repositório, verifica o HTML e confirma todos os sprites listados no manifesto do
+Arsenal. Em forks, o nome do dono e do repositório são inferidos pelo GitHub Actions;
+domínio próprio também é respeitado pelos dados fornecidos pelo Pages.
 
 ## Validação
 
@@ -74,16 +94,31 @@ O simulador é uma ferramenta de **comparação**, não um preditor exato. A Cip
 não publica a fórmula completa de dano. O RoyalPath usa uma fórmula comunitária
 reversa, ajustada às mudanças oficiais de 2026, e mantém mitigação do monstro,
 Wheel, charms, prey e outros modificadores fora do número principal. Spells só
-entram no ciclo simplificado quando o level informado já permite usá-las.
+entram no ciclo simplificado quando o level informado já permite usá-las. O
+modelo usa ataques básicos abaixo do level 50, adiciona Divine Caldera no 50 e
+Divine Barrage no 70. Ethereal Barrage é liberada no jogo no level 60, mas fica
+fora do ciclo entre 60–69; nessa faixa, a estimativa é conservadora e tende a
+ficar abaixo do potencial real.
+
+Para que o atributo **Hit** altere a comparação sem fingir uma fórmula exata, o
+app usa uma aproximação conservadora: 90% de precisão-base + Hit impresso na
+arma/munição, limitada a 100%. Imbuements só entram até o número de slots
+catalogado na arma; Forge só entra em armas com classe de tier, respeitando o
+limite da classe. Armor, proteção física e o valor bruto de defesa da
+arma/escudo permanecem conceitos separados.
 
 A estimativa deve ser confirmada no Impact Analyzer/Combat Stats do próprio jogo.
 A implementação e as ressalvas ficam em [`lib/damage.ts`](./lib/damage.ts).
 
 ## Fontes prioritárias
 
+- [Tibia — spells automáticas e exceções](https://www.tibia.com/news/?id=8675&subtopic=newsarchive)
+- [Tibia — Paladin Spells e requisitos de level](https://www.tibia.com/library/?vocation=Paladin&subtopic=spells)
 - [Tibia — Vocation Adjustments 2026](https://www.tibia.com/news/?id=8833&subtopic=newsarchive)
 - [Tibia — ajustes finais de 7 jul 2026](https://www.tibia.com/news/?id=8872&subtopic=newsarchive)
-- [Tibia — Summer Update 2026](https://www.tibia.com/news/?id=8845&subtopic=newsarchive)
+- [Tibia — Weapon Proficiency Update](https://www.tibia.com/news/?id=8850&subtopic=newsarchive)
+- [Tibia — regras finais de Major/Minor Charms](https://www.tibia.com/news/?id=8140&subtopic=newsarchive)
+- [Tibia — Shared Experience](https://www.tibia.com/support/?entryid=92&subtopic=gethelp)
 - [Tibia — imbuements e crítico](https://www.tibia.com/news/?id=8421&subtopic=newsarchive)
 - [Tibia — Exaltation Forge](https://www.tibia.com/news/?id=7599&subtopic=newsarchive)
 - [TibiaPal — hunting](https://tibiapal.com/hunting)

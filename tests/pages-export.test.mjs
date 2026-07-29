@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
@@ -53,8 +54,9 @@ test("prefixa os recursos locais e publica metadata absoluta", async () => {
   assert.match(html, /<html[^>]+lang="pt-BR"/i);
   assert.match(html, /Vida máxima/);
   assert.match(html, /Mana máxima/);
-  assert.match(html, /DPS esperado/);
-  assert.match(html, /Defesa do set/);
+  assert.match(html, /DPS estimado/);
+  assert.match(html, /Estimativa comparativa em 1 alvo/);
+  assert.match(html, /Armadura e proteção física/);
   assert.match(
     html,
     new RegExp(`(?:href|src)="${escapeRegExp(basePath)}/_next/`),
@@ -75,9 +77,40 @@ test("inclui todos os sprites usados pelo Arsenal", async () => {
     await readFile(join(out, "items", "manifest.json"), "utf8"),
   );
 
-  assert.equal(manifest.items.length, 44);
+  assert.ok(manifest.items.length >= 555, "o catálogo publicado deveria permanecer completo");
+  assert.equal(new Set(manifest.items.map(({ id }) => id)).size, manifest.items.length);
+  assert.ok(manifest.items.every(({ id }) => typeof id === "string" && id.length > 0));
+  assert.ok(
+    manifest.items.every(
+      ({ width, height, sha256 }) =>
+        width === 32 &&
+        height === 32 &&
+        /^[a-f0-9]{64}$/.test(sha256),
+    ),
+    "todo sprite deveria declarar dimensões 32x32 e hash SHA-256",
+  );
+
+  const publishedSpriteIds = (await readdir(join(out, "items")))
+    .filter((name) => name.endsWith(".png"))
+    .map((name) => name.slice(0, -4))
+    .sort();
+  const manifestIds = manifest.items.map(({ id }) => id).sort();
+  assert.deepEqual(
+    publishedSpriteIds,
+    manifestIds,
+    "não deveria haver sprite faltante ou órfão",
+  );
+
   await Promise.all(
-    manifest.items.map(({ id }) => assertNonEmpty(`items/${id}.png`)),
+    manifest.items.map(async ({ id, sha256 }) => {
+      await assertNonEmpty(`items/${id}.png`);
+      const contents = await readFile(join(out, "items", `${id}.png`));
+      assert.equal(
+        createHash("sha256").update(contents).digest("hex"),
+        sha256,
+        `hash divergente para ${id}.png`,
+      );
+    }),
   );
 
   const emittedFiles = await collectFiles(join(out, "_next", "static"));

@@ -11,6 +11,10 @@ players can visually identify the equipment discussed by RoyalPath.
   [TibiaData Item API by ByteWizards](https://tibiadata.bytewizards.de/) and,
   for ammunition absent from that catalog, the
   [TibiaWiki on Fandom](https://tibia.fandom.com/).
+- The catalog synchronizer keeps Paladin-compatible equipment and ammunition,
+  excludes entries marked unobtainable, and stores each active sprite locally
+  so the GitHub Pages build does not depend on a third-party image request at
+  runtime.
 - Original WebP/GIF files were converted to 32 × 32 transparent PNGs without
   redrawing the artwork.
 

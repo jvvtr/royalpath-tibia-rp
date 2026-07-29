@@ -22,22 +22,30 @@ import {
 } from "../lib/character";
 import {
   DAMAGE_MODEL_VERSION,
+  allocateImbuements,
+  approximateRangedAccuracy,
+  canAllocateAllImbuements,
+  communityRangedAccuracyProfile,
   estimateLevelAwareCycle,
+  gateIncompatibleLevelAwareCycle,
+  sanitizeStoredSettings,
+  type CombatSettingsState,
+  type ImbuementCapacities,
+  type ImbuementEquipmentSlot,
+  type ImbuementKey,
   type LevelAwareCycleEstimate,
   type PaladinStance,
 } from "../lib/damage";
 
-type ViewId = "inicio" | "arsenal" | "simulador" | "hunts" | "jornada";
+type ViewId =
+  | "inicio"
+  | "arsenal"
+  | "simulador"
+  | "hunts"
+  | "tutoriais"
+  | "jornada";
 type EquipmentSlot = ItemSlot;
-
-type CombatSettings = {
-  stance: PaladinStance;
-  resistance: number;
-  forgeTier: number;
-  powerfulStrike: boolean;
-  powerfulVamp: boolean;
-  powerfulVoid: boolean;
-};
+type CombatSettings = CombatSettingsState;
 
 type StoredProfile = {
   level?: number;
@@ -45,7 +53,7 @@ type StoredProfile = {
   magicLevel?: number;
   completed?: string[];
   loadout?: Partial<Record<EquipmentSlot, string>>;
-  settings?: Partial<CombatSettings>;
+  settings?: unknown;
 };
 
 type CombatSummary = LevelAwareCycleEstimate & {
@@ -53,7 +61,14 @@ type CombatSummary = LevelAwareCycleEstimate & {
   compatibilityMessage: string | null;
   weapon: Item | undefined;
   ammo: Item | undefined;
+  quiver: Item | undefined;
+  shield: Item | undefined;
   effectiveStance: PaladinStance;
+  accuracyBasePercent: number;
+  estimatedAccuracyPercent: number;
+  appliedAccuracyPercent: number;
+  accuracyIsOverridden: boolean;
+  accuracyUsesFallback: boolean;
 };
 
 const NAVIGATION: ReadonlyArray<{
@@ -71,14 +86,33 @@ const NAVIGATION: ReadonlyArray<{
     marker: "03",
   },
   { id: "hunts", label: "Onde caçar", shortLabel: "Hunts", marker: "04" },
-  { id: "jornada", label: "Jornada", shortLabel: "Guia", marker: "05" },
+  { id: "tutoriais", label: "Tutoriais", shortLabel: "Aprender", marker: "05" },
+  { id: "jornada", label: "Jornada", shortLabel: "Jornada", marker: "06" },
 ];
 
+type TutorialCategory = "todos" | Guide["category"];
+
+const TUTORIAL_CATEGORIES: ReadonlyArray<{
+  id: TutorialCategory;
+  label: string;
+}> = [
+  { id: "todos", label: "Todos" },
+  { id: "primeiros-passos", label: "Comece aqui" },
+  { id: "treino", label: "Treino" },
+  { id: "seguranca", label: "Segurança" },
+  { id: "equipamento", label: "Equipamento" },
+  { id: "combate", label: "Combate" },
+  { id: "imbuement", label: "Imbuements" },
+  { id: "sistemas", label: "Sistemas" },
+  { id: "forge", label: "Forge" },
+  { id: "proficiency", label: "Proficiency" },
+];
 const SLOT_ORDER: readonly EquipmentSlot[] = [
   "head",
   "amulet",
   "armor",
   "quiver",
+  "shield",
   "weapon",
   "legs",
   "ammo",
@@ -91,6 +125,7 @@ const SLOT_LABELS: Record<EquipmentSlot, string> = {
   amulet: "Amuleto",
   armor: "Armadura",
   quiver: "Aljava",
+  shield: "Escudo",
   weapon: "Arma",
   legs: "Pernas",
   ammo: "Munição",
@@ -106,7 +141,134 @@ const PROTECTION_LABELS: Record<string, string> = {
   ice: "Gelo",
   holy: "Holy",
   death: "Death",
+  lifeDrain: "Dreno de vida",
+  manaDrain: "Dreno de mana",
 };
+
+const IMBUEMENT_LABELS: Readonly<Record<ImbuementKey, string>> = {
+  powerfulStrike: "Strike",
+  powerfulVamp: "Vampirism",
+  powerfulVoid: "Void",
+};
+
+const IMBUEMENT_SLOT_LABELS: Readonly<
+  Record<ImbuementEquipmentSlot, string>
+> = {
+  weapon: "Arma",
+  armor: "Armadura",
+  head: "Capacete",
+};
+
+const FORGE_MAX_TIER_BY_CLASS: Readonly<Record<0 | 1 | 2 | 3 | 4, number>> = {
+  0: 0,
+  1: 1,
+  2: 2,
+  3: 3,
+  4: 10,
+};
+
+const BOW_PROGRESSION = [
+  "elvish-bow",
+  "composite-hornbow",
+  "rift-bow",
+  "jungle-bow",
+  "bow-of-destruction",
+  "living-vine-bow",
+  "bow-of-cataclysm",
+  "lion-longbow",
+  "falcon-bow",
+  "soulbleeder",
+  "sanguine-bow",
+  "moonsilver-bow",
+] as const;
+
+const THROWN_PROGRESSION = [
+  "spear",
+  "royal-spear",
+  "enchanted-spear",
+  "assassin-star",
+  "viper-star",
+  "glooth-spear",
+] as const;
+
+const CROSSBOW_PROGRESSION = [
+  "crossbow",
+  "arbalest",
+  "modified-crossbow",
+  "rift-crossbow",
+  "ornate-crossbow",
+  "cobra-crossbow",
+  "naga-crossbow",
+  "soulpiercer",
+  "sanguine-crossbow",
+  "moonsilver-crossbow",
+] as const;
+
+const ARROW_PROGRESSION = [
+  "arrow",
+  "onyx-arrow",
+  "crystalline-arrow",
+  "diamond-arrow",
+] as const;
+
+const BOLT_PROGRESSION = [
+  "bolt",
+  "power-bolt",
+  "infernal-bolt",
+  "prismatic-bolt",
+  "spectral-bolt",
+] as const;
+
+const SHIELD_PROGRESSION = [
+  "wooden-shield",
+  "dwarven-shield",
+  "dragon-shield",
+  "demon-shield",
+  "mastermind-shield",
+  "ornate-shield",
+  "gnome-shield",
+  "falcon-escutcheon",
+  "soulbastion",
+] as const;
+
+const SUGGESTED_PROGRESSION: Partial<
+  Record<EquipmentSlot, readonly string[]>
+> = {
+  head: [
+    "zaoan-helmet",
+    "dark-whispers",
+    "falcon-coif",
+    "alicorn-headguard",
+    "moonsilver-trail-hood",
+  ],
+  amulet: ["sleep-shawl", "flamingo-precision"],
+  armor: [
+    "paladin-armor",
+    "gnome-armor",
+    "ghost-chestplate",
+    "soulshell",
+  ],
+  quiver: ["quiver"],
+  shield: SHIELD_PROGRESSION,
+  weapon: BOW_PROGRESSION,
+  legs: [
+    "dwarven-legs",
+    "prismatic-legs",
+    "falcon-greaves",
+    "sanguine-greaves",
+  ],
+  ammo: ARROW_PROGRESSION,
+  boots: ["guardian-boots", "winged-boots", "soulstalkers"],
+};
+
+const GUIDE_ROUTE = [
+  "primeira-hora-rp",
+  "quiver-and-ammunition",
+  "offline-training",
+  "blessings-death-protection",
+  "promotion-stances",
+  "imbuements",
+] as const;
 
 const STORAGE_KEY = "royalpath-profile-v2";
 const LEGACY_STORAGE_KEY = "royalpath-profile-v1";
@@ -120,6 +282,7 @@ const DEFAULT_SETTINGS: CombatSettings = {
   powerfulStrike: false,
   powerfulVamp: false,
   powerfulVoid: false,
+  accuracyOverride: null,
 };
 
 function clamp(value: number, min: number, max: number, fallback: number) {
@@ -147,13 +310,19 @@ function bandForLevel(level: number): ProgressionBand {
 
 function weaponKind(item: Item | undefined) {
   if (!item || item.slot !== "weapon") return "none";
-  if (/crossbow|arbalest|piercer/i.test(item.name)) return "crossbow";
-  if (/spear|star|knife|javelin/i.test(item.name)) return "thrown";
+  if (item.weaponKind) return item.weaponKind;
+  if (/crossbow|arbalest|piercer|bolter|ironworker|devileye|thorn spitter/i.test(item.name)) {
+    return "crossbow";
+  }
+  if (/spear|star|knife|javelin|stone|snowball/i.test(item.name)) {
+    return "thrown";
+  }
   return "bow";
 }
 
 function ammoKind(item: Item | undefined) {
   if (!item || item.slot !== "ammo") return "none";
+  if (item.ammoKind) return item.ammoKind;
   return /bolt/i.test(item.name) ? "bolt" : "arrow";
 }
 
@@ -165,28 +334,87 @@ function isAmmoCompatible(weapon: Item | undefined, ammo: Item | undefined) {
   return false;
 }
 
-function eligibleItems(slot: EquipmentSlot, level: number) {
-  return ITEMS.filter(
-    (item) => item.slot === slot && item.minLevel <= level,
-  );
+function isLoadoutCompatible(
+  weapon: Item | undefined,
+  ammo: Item | undefined,
+  quiver: Item | undefined,
+  shield: Item | undefined,
+) {
+  const kind = weaponKind(weapon);
+  if (kind === "thrown") {
+    return Boolean(shield && !ammo && !quiver);
+  }
+  if (kind === "bow" || kind === "crossbow") {
+    return Boolean(quiver && !shield && isAmmoCompatible(weapon, ammo));
+  }
+  return false;
 }
 
+function maxForgeTier(item: Item | undefined) {
+  return FORGE_MAX_TIER_BY_CLASS[item?.tierClass ?? 0];
+}
+
+function imbuementCapacities(
+  loadout: Partial<Record<EquipmentSlot, string>>,
+): ImbuementCapacities {
+  return {
+    weapon: Math.max(0, itemById(loadout.weapon)?.imbueSlots ?? 0),
+    armor: Math.max(0, itemById(loadout.armor)?.imbueSlots ?? 0),
+    head: Math.max(0, itemById(loadout.head)?.imbueSlots ?? 0),
+  };
+}
+
+function progressionFor(
+  slot: EquipmentSlot,
+  preferredKind?: "arrow" | "bolt" | "bow" | "crossbow" | "thrown",
+) {
+  if (preferredKind === "bow") return BOW_PROGRESSION;
+  if (preferredKind === "crossbow") return CROSSBOW_PROGRESSION;
+  if (preferredKind === "thrown") return THROWN_PROGRESSION;
+  if (preferredKind === "arrow") return ARROW_PROGRESSION;
+  if (preferredKind === "bolt") return BOLT_PROGRESSION;
+  return SUGGESTED_PROGRESSION[slot] ?? [];
+}
+
+/**
+ * Automatic suggestions are deliberately limited to an explicit progression
+ * of useful hunting equipment. The full catalog remains searchable, but
+ * cosmetic/novelty items are never selected merely because their level is
+ * high.
+ */
 function bestItemForSlot(
   slot: EquipmentSlot,
   level: number,
-  preferredKind?: "arrow" | "bolt" | "bow",
+  preferredKind?: "arrow" | "bolt" | "bow" | "crossbow" | "thrown",
 ) {
-  const eligible = eligibleItems(slot, level);
-  const preferred = preferredKind
-    ? eligible.filter((item) => {
-        if (preferredKind === "bow") return weaponKind(item) === "bow";
-        return ammoKind(item) === preferredKind;
-      })
-    : eligible;
+  return progressionFor(slot, preferredKind)
+    .map((id) => itemById(id))
+    .filter(
+      (item): item is Item =>
+        Boolean(item && item.slot === slot && item.minLevel <= level),
+    )
+    .at(-1);
+}
 
-  return [...(preferred.length ? preferred : eligible)].sort(
-    (a, b) => b.minLevel - a.minLevel,
-  )[0];
+function normalizeCombatSettings(
+  settings: unknown,
+  loadout: Partial<Record<EquipmentSlot, string>>,
+): CombatSettings {
+  const sanitized = sanitizeStoredSettings(
+    settings,
+    maxForgeTier(itemById(loadout.weapon)),
+  );
+  const allocation = allocateImbuements(
+    sanitized,
+    imbuementCapacities(loadout),
+  );
+
+  return {
+    ...sanitized,
+    powerfulStrike: allocation.placements.powerfulStrike !== undefined,
+    powerfulVamp: allocation.placements.powerfulVamp !== undefined,
+    powerfulVoid: allocation.placements.powerfulVoid !== undefined,
+  };
 }
 
 function suggestedLoadout(
@@ -195,6 +423,9 @@ function suggestedLoadout(
   const result: Partial<Record<EquipmentSlot, string>> = {};
 
   for (const slot of SLOT_ORDER) {
+    // The default beginner path uses a bow, so shield remains empty. It is
+    // filled automatically when the player deliberately selects thrown.
+    if (slot === "shield") continue;
     const best =
       slot === "weapon"
         ? bestItemForSlot(slot, level, "bow")
@@ -216,11 +447,7 @@ function reconcileLoadout(
 
   for (const slot of SLOT_ORDER) {
     const selected = itemById(current[slot]);
-    if (
-      selected &&
-      selected.slot === slot &&
-      selected.minLevel <= level
-    ) {
+    if (selected && selected.slot === slot) {
       next[slot] = selected.id;
     } else if (suggested[slot]) {
       next[slot] = suggested[slot];
@@ -231,7 +458,17 @@ function reconcileLoadout(
   const kind = weaponKind(weapon);
   if (kind === "thrown") {
     delete next.ammo;
+    delete next.quiver;
+    if (!itemById(next.shield)) {
+      const shield = bestItemForSlot("shield", level);
+      if (shield) next.shield = shield.id;
+    }
   } else {
+    delete next.shield;
+    if (!itemById(next.quiver)) {
+      const quiver = bestItemForSlot("quiver", level);
+      if (quiver) next.quiver = quiver.id;
+    }
     const ammo = itemById(next.ammo);
     const expected = kind === "crossbow" ? "bolt" : "arrow";
     if (ammoKind(ammo) !== expected) {
@@ -244,11 +481,45 @@ function reconcileLoadout(
   return next;
 }
 
-function sameLoadout(
-  left: Partial<Record<EquipmentSlot, string>>,
-  right: Partial<Record<EquipmentSlot, string>>,
+function selectItemForLoadout(
+  level: number,
+  current: Partial<Record<EquipmentSlot, string>>,
+  item: Item,
 ) {
-  return SLOT_ORDER.every((slot) => left[slot] === right[slot]);
+  const next = { ...current, [item.slot]: item.id };
+
+  if (item.slot === "shield" && weaponKind(itemById(next.weapon)) !== "thrown") {
+    const thrown = bestItemForSlot("weapon", level, "thrown");
+    if (thrown) next.weapon = thrown.id;
+  }
+
+  if (
+    item.slot === "quiver" &&
+    weaponKind(itemById(next.weapon)) === "thrown"
+  ) {
+    const bow = bestItemForSlot("weapon", level, "bow");
+    if (bow) next.weapon = bow.id;
+  }
+
+  if (item.slot === "ammo") {
+    const expectedWeaponKind = ammoKind(item) === "bolt" ? "crossbow" : "bow";
+    if (weaponKind(itemById(next.weapon)) !== expectedWeaponKind) {
+      const replacement =
+        expectedWeaponKind === "bow"
+          ? bestItemForSlot("weapon", level, "bow")
+          : bestItemForSlot("weapon", level, "crossbow");
+      if (replacement) next.weapon = replacement.id;
+    }
+  }
+
+  const reconciled = reconcileLoadout(level, next);
+  const adjustedSlots = SLOT_ORDER.filter(
+    (slot) =>
+      slot !== item.slot &&
+      (current[slot] ?? null) !== (reconciled[slot] ?? null),
+  );
+
+  return { loadout: reconciled, adjustedSlots };
 }
 
 function focusLabel(focus: string) {
@@ -299,10 +570,11 @@ function itemStats(item: Item) {
         : `Atk +${item.attack}`,
     );
   }
-  if (item.hit) stats.push(`Hit +${item.hit}`);
+  if (item.hit) stats.push(`Hit ${item.hit > 0 ? "+" : ""}${item.hit}`);
   if (item.distance) stats.push(`Dist +${item.distance}`);
   if (item.magic) stats.push(`Holy ML +${item.magic}`);
   if (item.armor) stats.push(`Arm ${item.armor}`);
+  if (item.defense) stats.push(`Def ${item.defense}`);
   if (item.protection?.length) stats.push(item.protection[0]);
   return stats.slice(0, 3);
 }
@@ -315,17 +587,32 @@ function combatSummary(
 ): CombatSummary {
   const weapon = itemById(loadout.weapon);
   const selectedAmmo = itemById(loadout.ammo);
+  const quiver = itemById(loadout.quiver);
+  const shield = itemById(loadout.shield);
   const kind = weaponKind(weapon);
   const ammo = kind === "thrown" ? undefined : selectedAmmo;
-  const compatible = isAmmoCompatible(weapon, ammo);
+  const compatible = isLoadoutCompatible(weapon, ammo, quiver, shield);
   const effectiveStance: PaladinStance =
     level >= 20 ? settings.stance : "neutral";
   const ammunitionAttack =
     kind === "thrown" ? weapon?.attack ?? 0 : ammo?.attack ?? 0;
   const weaponAttackModifier =
     kind === "thrown" ? 0 : weapon?.attack ?? 0;
+  const hitModifier = (weapon?.hit ?? 0) + (ammo?.hit ?? 0);
+  const accuracyProfile = communityRangedAccuracyProfile(
+    kind === "thrown" ? weapon?.name : ammo?.name,
+    kind === "thrown" ? "thrown" : "ammo",
+  );
+  const accuracyBasePercent = accuracyProfile.basePercent;
+  const estimatedAccuracyPercent = approximateRangedAccuracy(
+    hitModifier,
+    accuracyBasePercent,
+  );
+  const effectiveSettings = normalizeCombatSettings(settings, loadout);
+  const appliedAccuracyPercent =
+    effectiveSettings.accuracyOverride ?? estimatedAccuracyPercent;
 
-  const cycle = estimateLevelAwareCycle({
+  const estimatedCycle = estimateLevelAwareCycle({
     autoAttack: {
       level,
       distance: stats.distance,
@@ -333,17 +620,21 @@ function combatSummary(
       stance: effectiveStance,
       ammunitionAttack,
       weaponAttackModifier,
-      accuracyPercent: compatible ? 100 : 0,
+      accuracyPercent: appliedAccuracyPercent,
       targetResistancePercent: settings.resistance,
-      critical: settings.powerfulStrike
+      critical: effectiveSettings.powerfulStrike
         ? { chancePercent: 10, extraDamagePercent: 50 }
         : { chancePercent: 5, extraDamagePercent: 10 },
-      forgeTier: settings.forgeTier,
-      lifeLeechPercent: settings.powerfulVamp ? 25 : 0,
-      manaLeechPercent: settings.powerfulVoid ? 8 : 0,
+      forgeTier: effectiveSettings.forgeTier,
+      lifeLeechPercent: effectiveSettings.powerfulVamp ? 25 : 0,
+      manaLeechPercent: effectiveSettings.powerfulVoid ? 8 : 0,
     },
     magicLevel: stats.magic,
   });
+  const cycle = gateIncompatibleLevelAwareCycle(
+    estimatedCycle,
+    compatible,
+  );
 
   let compatibilityMessage: string | null = null;
   if (!weapon) {
@@ -352,6 +643,18 @@ function combatSummary(
     compatibilityMessage = "Escolha uma arrow para este bow.";
   } else if (kind === "crossbow" && !ammo) {
     compatibilityMessage = "Escolha um bolt para este crossbow.";
+  } else if ((kind === "bow" || kind === "crossbow") && !quiver) {
+    compatibilityMessage =
+      "Bows e crossbows precisam de uma aljava equipada.";
+  } else if (kind === "thrown" && !shield) {
+    compatibilityMessage =
+      "Armas de arremesso usam um escudo e não usam aljava ou munição separada.";
+  } else if (kind === "thrown" && (selectedAmmo || quiver)) {
+    compatibilityMessage =
+      "Remova a aljava e a munição: a arma de arremesso já é o projétil.";
+  } else if ((kind === "bow" || kind === "crossbow") && shield) {
+    compatibilityMessage =
+      "Bows e crossbows ocupam as duas mãos: use aljava e munição, sem escudo.";
   } else if (!compatible) {
     compatibilityMessage =
       kind === "crossbow"
@@ -365,7 +668,15 @@ function combatSummary(
     compatibilityMessage,
     weapon,
     ammo,
+    quiver,
+    shield,
     effectiveStance,
+    accuracyBasePercent,
+    estimatedAccuracyPercent,
+    appliedAccuracyPercent: compatible ? appliedAccuracyPercent : 0,
+    accuracyIsOverridden:
+      effectiveSettings.accuracyOverride !== null,
+    accuracyUsesFallback: accuracyProfile.isFallback,
   };
 }
 
@@ -448,11 +759,18 @@ export default function RoyalPathApp() {
       setCompleted(
         Array.isArray(saved?.completed) ? saved.completed : [],
       );
-      setLoadout(reconcileLoadout(nextLevel, saved?.loadout));
-      setSettings({
+      const restoredLoadout = reconcileLoadout(nextLevel, saved?.loadout);
+      setLoadout(restoredLoadout);
+      setSettings(normalizeCombatSettings({
         ...DEFAULT_SETTINGS,
-        ...(saved?.settings ?? {}),
-      });
+        ...(
+          typeof saved?.settings === "object" &&
+            saved.settings !== null &&
+            !Array.isArray(saved.settings)
+            ? saved.settings
+            : {}
+        ),
+      }, restoredLoadout));
       setHydrated(true);
     });
   }, []);
@@ -528,28 +846,51 @@ export default function RoyalPathApp() {
 
   function changeLevel(nextValue: number) {
     const nextLevel = clampLevel(nextValue);
+    const reconciled = reconcileLoadout(nextLevel, loadout);
+    const unavailableCount = SLOT_ORDER.filter(
+      (slot) => (itemById(reconciled[slot])?.minLevel ?? 0) > nextLevel,
+    ).length;
+
     setLevel(nextLevel);
-    setLoadout((current) => {
-      const next = reconcileLoadout(nextLevel, current);
-      if (!sameLoadout(current, next)) {
-        setNotice(
-          "Seu set foi ajustado automaticamente para respeitar o novo level.",
-        );
-      }
-      return next;
-    });
+    setLoadout(reconciled);
+    setSettings((current) =>
+      normalizeCombatSettings(current, reconciled),
+    );
+    setNotice(
+      unavailableCount
+        ? `${unavailableCount} item(ns) ficaram acima do seu level. Eles continuam selecionados para a simula\u00e7\u00e3o.`
+        : "",
+    );
   }
 
   function equip(item: Item) {
-    if (item.minLevel > level) return;
-    setLoadout((current) =>
-      reconcileLoadout(level, { ...current, [item.slot]: item.id }),
+    const selection = selectItemForLoadout(level, loadout, item);
+    const next = selection.loadout;
+    setLoadout(next);
+    setSettings((current) =>
+      normalizeCombatSettings(current, next),
     );
-    setNotice(`${item.name} foi equipado.`);
+    const baseNotice =
+      item.minLevel > level
+        ? `${item.name} foi selecionado apenas para simula\u00e7\u00e3o: requer level ${item.minLevel}.`
+        : `${item.name} foi equipado.`;
+    const automaticAdjustments = selection.adjustedSlots.map((slot) => {
+      const selected = itemById(next[slot]);
+      return `${SLOT_LABELS[slot]} → ${selected?.name ?? "vazio"}`;
+    });
+    setNotice(
+      automaticAdjustments.length
+        ? `${baseNotice} Ajustes automáticos: ${automaticAdjustments.join("; ")}.`
+        : baseNotice,
+    );
   }
 
   function resetLoadout() {
-    setLoadout(suggestedLoadout(level));
+    const next = suggestedLoadout(level);
+    setLoadout(next);
+    setSettings((current) =>
+      normalizeCombatSettings(current, next),
+    );
     setNotice("Aplicamos uma base simples para o seu level.");
   }
 
@@ -563,7 +904,11 @@ export default function RoyalPathApp() {
         .find((item) => item && item.minLevel <= level);
       if (eligible) next[slot] = eligible.id;
     }
-    setLoadout(reconcileLoadout(level, next));
+    const reconciled = reconcileLoadout(level, next);
+    setLoadout(reconciled);
+    setSettings((current) =>
+      normalizeCombatSettings(current, reconciled),
+    );
     setNotice(`Preset “${context.label}” aplicado ao que seu level permite.`);
   }
 
@@ -598,21 +943,10 @@ export default function RoyalPathApp() {
             </span>
           </button>
 
-          <nav className="desktop-nav" aria-label="Navegação principal">
-            {NAVIGATION.map((item) => (
-              <a
-                href={`#${item.id}`}
-                key={item.id}
-                aria-current={view === item.id ? "page" : undefined}
-                onClick={(event) => {
-                  event.preventDefault();
-                  navigate(item.id);
-                }}
-              >
-                {item.label}
-              </a>
-            ))}
-          </nav>
+          <div className="masthead-tagline">
+            <strong>Manual do aventureiro</strong>
+            <span>Royal Paladin · do level 8 ao endgame</span>
+          </div>
 
           <label className="header-level" htmlFor="character-level">
             <span>Meu level</span>
@@ -628,6 +962,47 @@ export default function RoyalPathApp() {
         </div>
       </header>
 
+      <nav className="mobile-nav" aria-label="Navegação principal">
+        {NAVIGATION.map((item) => (
+          <a
+            href={`#${item.id}`}
+            key={item.id}
+            aria-current={view === item.id ? "page" : undefined}
+            onClick={(event) => {
+              event.preventDefault();
+              navigate(item.id);
+            }}
+          >
+            <span aria-hidden="true">{item.marker}</span>
+            {item.shortLabel}
+          </a>
+        ))}
+      </nav>
+
+      <div className="site-layout">
+        <aside className="side-rail left-rail" aria-label="Menu do RoyalPath">
+          <div className="rail-title">Navegação</div>
+          <nav className="desktop-nav" aria-label="Navegação principal">
+            {NAVIGATION.map((item) => (
+              <a
+                href={`#${item.id}`}
+                key={item.id}
+                aria-current={view === item.id ? "page" : undefined}
+                onClick={(event) => {
+                  event.preventDefault();
+                  navigate(item.id);
+                }}
+              >
+                <span aria-hidden="true">{item.marker}</span>
+                <span>{item.label}</span>
+              </a>
+            ))}
+          </nav>
+          <div className="rail-tip">
+            <strong>Primeira vez?</strong>
+            Comece em Tutoriais e marque os marcos da Jornada conforme avançar.
+          </div>
+        </aside>
       <main className="site-frame" id="conteudo" tabIndex={-1}>
         {notice ? (
           <div className="status-message" role="status">
@@ -689,6 +1064,8 @@ export default function RoyalPathApp() {
 
         {view === "hunts" ? <HuntsView level={level} /> : null}
 
+        {view === "tutoriais" ? <TutorialsView level={level} /> : null}
+
         {view === "jornada" ? (
           <JourneyView
             level={level}
@@ -701,22 +1078,56 @@ export default function RoyalPathApp() {
         <Footer />
       </main>
 
-      <nav className="mobile-nav" aria-label="Navegação móvel">
-        {NAVIGATION.map((item) => (
-          <a
-            href={`#${item.id}`}
-            key={item.id}
-            aria-current={view === item.id ? "page" : undefined}
-            onClick={(event) => {
-              event.preventDefault();
-              navigate(item.id);
-            }}
-          >
-            <span aria-hidden="true">{item.marker}</span>
-            {item.shortLabel}
-          </a>
-        ))}
-      </nav>
+        <aside className="side-rail right-rail" aria-label="Resumo do meu Royal Paladin">
+          <div className="rail-title">Meu Paladin</div>
+          <section className="rail-panel character-rail-panel">
+            <div className="rail-level">
+              <span>Level</span>
+              <strong>{level}</strong>
+            </div>
+            <dl className="rail-stats">
+              <div><dt>Distance</dt><dd>{stats.distance.toFixed(0)}</dd></div>
+              <div><dt>Magic</dt><dd>{stats.magic.toFixed(0)}</dd></div>
+              <div><dt>Vida</dt><dd>{stats.hp.toLocaleString("pt-BR")}</dd></div>
+              <div><dt>Mana</dt><dd>{stats.mana.toLocaleString("pt-BR")}</dd></div>
+            </dl>
+            <button type="button" className="rail-link" onClick={() => navigate("simulador")}>
+              Abrir simulador →
+            </button>
+          </section>
+
+          <section className="rail-panel">
+            <h2>Arsenal atual</h2>
+            <div className="right-rail-loadout">
+              {equipped.slice(0, SLOT_ORDER.length).map((item) => (
+                <div key={item.id} title={item.name}>
+                  <ItemSprite item={item} size="small" />
+                  <span>{item.name}</span>
+                </div>
+              ))}
+            </div>
+            {equipped.some((item) => item.minLevel > level) ? (
+              <p className="rail-future-note">
+                Simulação hipotética: há itens acima do seu level.
+              </p>
+            ) : null}
+            <button type="button" className="rail-link" onClick={() => navigate("arsenal")}>
+              Trocar itens →
+            </button>
+          </section>
+
+          <section className="rail-panel rail-help">
+            <h2>Está começando?</h2>
+            <p>
+              Comece pela primeira hora, quiver, treino, blessings, promoção e
+              imbuements.
+            </p>
+            <button type="button" className="rail-link" onClick={() => navigate("tutoriais")}>
+              Ver tutoriais →
+            </button>
+          </section>
+        </aside>
+      </div>
     </div>
   );
 }
@@ -842,9 +1253,9 @@ function StatsSummary({
           ✦
         </span>
         <div>
-          <small>DPS esperado</small>
+          <small>DPS estimado</small>
           <strong>{dps.toLocaleString("pt-BR")}</strong>
-          <span>{combat.rotationLabel}</span>
+          <span>Estimativa comparativa em 1 alvo · {combat.rotationLabel}</span>
         </div>
       </article>
       <article className="summary-card summary-defense">
@@ -852,13 +1263,14 @@ function StatsSummary({
           ◈
         </span>
         <div>
-          <small>Defesa do set</small>
-          <strong>{stats.armor} arm</strong>
-          <span>
+          <small>Armadura e proteção física</small>
+          <strong>
+            {stats.armor} arm ·{" "}
             {physical
               ? `${formatProtection(physical)} físico`
-              : "sem proteção % física"}
-          </span>
+              : "0% físico"}
+          </strong>
+          <span>Def {stats.defense} é valor bruto, não redução direta.</span>
         </div>
       </article>
     </section>
@@ -974,7 +1386,7 @@ function DashboardView({
           <h2>{nextMilestone?.title ?? "Aprimore um set por contexto"}</h2>
           <p>
             {nextMilestone?.summary ??
-              "Seu level já passou pelos marcos principais. Compare proteção e sustain antes de comprar."}
+              "Seu level já passou pelos marcos principais. Compare proteção e recuperação de vida/mana (sustain) antes de comprar."}
           </p>
           <ul className="clean-list">
             {(nextMilestone?.actions ?? band.goals).slice(0, 3).map((action) => (
@@ -1026,10 +1438,12 @@ function DashboardView({
 
 function EquipmentBoard({
   loadout,
+  level,
   selectedSlot,
   onSelectSlot,
 }: {
   loadout: Partial<Record<EquipmentSlot, string>>;
+  level: number;
   selectedSlot?: EquipmentSlot;
   onSelectSlot?: (slot: EquipmentSlot) => void;
 }) {
@@ -1045,19 +1459,20 @@ function EquipmentBoard({
       <div className="equipment-grid" aria-label="Equipamentos selecionados">
         {SLOT_ORDER.map((slot) => {
           const item = itemById(loadout[slot]);
+          const unavailable = Boolean(item && item.minLevel > level);
           return (
             <button
               type="button"
               className={`equipment-slot${
                 selectedSlot === slot ? " is-selected" : ""
-              }${item ? " is-filled" : ""}`}
+              }${item ? " is-filled" : ""}${unavailable ? " is-future" : ""}`}
               key={slot}
               onClick={() => onSelectSlot?.(slot)}
               disabled={!onSelectSlot}
               aria-pressed={
                 onSelectSlot ? selectedSlot === slot : undefined
               }
-              aria-label={`${SLOT_LABELS[slot]}: ${item?.name ?? "vazio"}`}
+              aria-label={`${SLOT_LABELS[slot]}: ${item?.name ?? "vazio"}${unavailable ? `; requer level ${item?.minLevel}` : ""}`}
             >
               {item ? (
                 <ItemSprite item={item} size="large" />
@@ -1069,6 +1484,11 @@ function EquipmentBoard({
               <span>
                 <small>{SLOT_LABELS[slot]}</small>
                 <strong>{item?.name ?? "Vazio"}</strong>
+                {unavailable ? (
+                  <small className="slot-level-warning">
+                    Requer Lv {item?.minLevel}
+                  </small>
+                ) : null}
               </span>
             </button>
           );
@@ -1088,14 +1508,17 @@ function ProtectionPanel({ stats }: { stats: CharacterStats }) {
           <span className="card-label">Defesas</span>
           <h2>O que o set protege</h2>
         </div>
-        <span className="armor-badge">{stats.armor} armor</span>
+        <span className="armor-badge">
+          {stats.armor} arm · {stats.defense} defesa
+        </span>
       </div>
       <p>
         A armor reduz dano físico em uma faixa aproximada de{" "}
         <strong>
           {stats.armorReduction.min}–{stats.armorReduction.max}
         </strong>{" "}
-        por hit que atravessa a defesa.
+        por hit que atravessa a defesa. O valor de defesa do escudo/arma é
+        exibido separadamente e não entra nessa faixa de armor.
       </p>
       <div className="protection-list">
         {entries.map(([key, value]) => (
@@ -1146,7 +1569,10 @@ function ArsenalView({
   ).sort((a, b) => b.minLevel - a.minLevel);
 
   const choices = ITEMS.filter((item) => {
-    if (item.slot !== slot || item.minLevel > level) return false;
+    if (item.slot !== slot) return false;
+    if (slot === "ammo" && weaponKind(currentWeapon) === "thrown") {
+      return false;
+    }
     if (
       slot === "ammo" &&
       weaponKind(currentWeapon) === "bow" &&
@@ -1168,7 +1594,19 @@ function ArsenalView({
         .toLocaleLowerCase("pt-BR")
         .includes(normalized)
     );
-  }).sort((a, b) => b.minLevel - a.minLevel || a.name.localeCompare(b.name));
+  }).sort(
+    (a, b) => {
+      const aFuture = a.minLevel > level;
+      const bFuture = b.minLevel > level;
+      const availability = Number(aFuture) - Number(bFuture);
+      if (availability) return availability;
+      const levelDifference = aFuture
+        ? a.minLevel - b.minLevel
+        : b.minLevel - a.minLevel;
+      return levelDifference || a.name.localeCompare(b.name);
+    },
+  );
+  const availableCount = choices.filter((item) => item.minLevel <= level).length;
 
   return (
     <section className="view" aria-labelledby="arsenal-title">
@@ -1179,8 +1617,8 @@ function ArsenalView({
             Monte seu Arsenal
           </h1>
           <p>
-            Clique em um slot, reconheça o item pelo sprite e equipe uma opção
-            liberada para o seu level.
+            Pesquise qualquer equipamento de Royal Paladin pelo nome. Itens
+            acima do seu level continuam selecionáveis para comparar no simulador.
           </p>
         </div>
         <button
@@ -1197,6 +1635,7 @@ function ArsenalView({
       <div className="arsenal-layout">
         <EquipmentBoard
           loadout={loadout}
+          level={level}
           selectedSlot={slot}
           onSelectSlot={setSlot}
         />
@@ -1206,7 +1645,7 @@ function ArsenalView({
             <div>
               <span className="card-label">Trocar item</span>
               <h2>{SLOT_LABELS[slot]}</h2>
-              <p>{choices.length} opções disponíveis no level {level}.</p>
+              <p>{availableCount} pode usar agora · {choices.length - availableCount} para simular.</p>
             </div>
             <label className="item-search">
               <span className="sr-only">Buscar item</span>
@@ -1219,22 +1658,45 @@ function ArsenalView({
             </label>
           </div>
 
+          <div className="picker-level-legend" aria-label="Legenda de disponibilidade">
+            <span><i className="legend-ready" /> Pode usar agora</span>
+            <span><i className="legend-future" /> Acima do level · seleção liberada</span>
+          </div>
+
+          {slot === "ammo" ? (
+            <p className="compatibility-helper">
+              {weaponKind(currentWeapon) === "bow"
+                ? "Filtro ativo: este bow usa arrows, então somente arrows são exibidas."
+                : weaponKind(currentWeapon) === "crossbow"
+                  ? "Filtro ativo: este crossbow usa bolts, então somente bolts são exibidos."
+                  : "Armas de arremesso não usam munição separada. Escolha um bow ou crossbow no slot Arma para ver a munição compatível."}
+            </p>
+          ) : null}
+
           <div className="item-list">
             {choices.map((item) => {
               const selected = loadout[item.slot] === item.id;
+              const unavailable = item.minLevel > level;
               return (
                 <button
-                  className={`item-option${selected ? " is-equipped" : ""}`}
+                  className={`item-option${selected ? " is-equipped" : ""}${unavailable ? " is-future" : ""}`}
                   type="button"
                   key={item.id}
                   onClick={() => equip(item)}
                   aria-pressed={selected}
+                  aria-label={`${item.name}. ${unavailable ? `Requer level ${item.minLevel}; faltam ${item.minLevel - level}. Selecionar para simulação.` : "Disponível para equipar."}`}
                 >
                   <ItemSprite item={item} size="large" />
                   <span className="item-option-copy">
                     <span className="item-name-row">
                       <strong>{item.name}</strong>
-                      <small>Lv {item.minLevel || 8}</small>
+                      <small className={unavailable ? "level-badge is-locked" : "level-badge"}>
+                        {unavailable
+                          ? `Requer Lv ${item.minLevel} · faltam ${item.minLevel - level}`
+                          : item.minLevel
+                            ? `Lv ${item.minLevel}`
+                            : "Sem requisito"}
+                      </small>
                     </span>
                     <span className="item-stat-row">
                       {itemStats(item).map((stat) => (
@@ -1244,7 +1706,7 @@ function ArsenalView({
                     <small>{item.summary}</small>
                   </span>
                   <span className="equip-action">
-                    {selected ? "Equipado" : "Equipar"}
+                    {selected ? "Selecionado" : unavailable ? "Simular" : "Equipar"}
                   </span>
                 </button>
               );
@@ -1323,9 +1785,54 @@ function SimulatorView({
   navigate: (view: ViewId) => void;
 }) {
   const protections = protectionEntries(stats);
+  const futureItems = SLOT_ORDER.map((slot) => itemById(loadout[slot])).filter(
+    (item): item is Item => Boolean(item && item.minLevel > level),
+  ).sort((left, right) => left.minLevel - right.minLevel);
+  const capacities = imbuementCapacities(loadout);
+  const imbuementAllocation = allocateImbuements(settings, capacities);
+  const activeImbueCount = Object.keys(
+    imbuementAllocation.placements,
+  ).length;
+  const imbuementPlacementSummary = (
+    Object.entries(imbuementAllocation.placements) as Array<
+      [ImbuementKey, ImbuementEquipmentSlot]
+    >
+  ).map(
+    ([key, slot]) =>
+      `${IMBUEMENT_LABELS[key]} → ${IMBUEMENT_SLOT_LABELS[slot]}`,
+  );
+  const weaponMaxForgeTier = maxForgeTier(combat.weapon);
 
   function patchSettings(patch: Partial<CombatSettings>) {
-    setSettings({ ...settings, ...patch });
+    setSettings(
+      normalizeCombatSettings(
+        { ...settings, ...patch },
+        loadout,
+      ),
+    );
+  }
+
+  function toggleImbuement(
+    key: ImbuementKey,
+  ) {
+    const requested = { ...settings, [key]: !settings[key] };
+    if (
+      !settings[key] &&
+      !canAllocateAllImbuements(requested, capacities)
+    ) {
+      return;
+    }
+    patchSettings({ [key]: !settings[key] });
+  }
+
+  function canEnableImbuement(key: ImbuementKey) {
+    return (
+      settings[key] ||
+      canAllocateAllImbuements(
+        { ...settings, [key]: true },
+        capacities,
+      )
+    );
   }
 
   return (
@@ -1345,6 +1852,17 @@ function SimulatorView({
       </div>
 
       <StatsSummary stats={stats} combat={combat} />
+
+      {futureItems.length ? (
+        <div className="beginner-alert hypothetical-alert" role="status">
+          <strong>Simulação hipotética.</strong>
+          Os números incluem {futureItems.length} item(ns) acima do seu level: {futureItems.map((item) => item.name).join(", ")}.
+          Você pode comparar normalmente, mas ainda não pode usá-los no jogo.
+          <button type="button" onClick={() => navigate("arsenal")}>
+            Revisar no Arsenal
+          </button>
+        </div>
+      ) : null}
 
       {!combat.compatible ? (
         <div className="beginner-alert" role="alert">
@@ -1390,6 +1908,14 @@ function SimulatorView({
               </strong>
             </div>
             <div>
+              <span>Precisão usada</span>
+              <strong>
+                {combat.compatible
+                  ? `${combat.appliedAccuracyPercent}%`
+                  : "—"}
+              </strong>
+            </div>
+            <div>
               <span>Distance com set</span>
               <strong>{stats.distance.toFixed(0)}</strong>
             </div>
@@ -1406,8 +1932,13 @@ function SimulatorView({
             </div>
           </div>
           <p className="result-note">
-            É uma referência para comparar sets. Resistências, quantidade de
-            alvos, Wheel, charms, prey e execução real mudam o resultado.
+            {combat.accuracyIsOverridden
+              ? `A precisão de ${combat.appliedAccuracyPercent}% informada por você substitui a aproximação. `
+              : combat.accuracyUsesFallback
+                ? `Sem base catalogada para este item, o simulador usa o fallback explícito de ${combat.accuracyBasePercent}%; com o Hit impresso, a aproximação fica em ${combat.estimatedAccuracyPercent}%. `
+                : `A base comunitária desta munição/arma é ${combat.accuracyBasePercent}%; com o Hit impresso, a aproximação fica em ${combat.estimatedAccuracyPercent}%. `}
+            Não é uma fórmula oficial. Resistências, quantidade de alvos,
+            Wheel, charms, prey e execução real mudam o resultado.
           </p>
         </article>
       </div>
@@ -1431,9 +1962,10 @@ function SimulatorView({
             {SLOT_ORDER.map((slot) => {
               const item = itemById(loadout[slot]);
               return item ? (
-                <div key={slot} title={item.name}>
+                <div key={slot}>
                   <ItemSprite item={item} size="medium" />
                   <small>{SLOT_LABELS[slot]}</small>
+                  <span>{item.name}</span>
                 </div>
               ) : null;
             })}
@@ -1482,7 +2014,7 @@ function SimulatorView({
               <small>
                 {level < 20
                   ? "Disponível após a promoção no level 20."
-                  : "Sharpshooter favorece dano; Defiance favorece holy e cura."}
+                  : "Sharpshooter favorece dano; Defiance reforça holy/cura e dá 12% de dodge contra ataques não adjacentes."}
               </small>
             </label>
 
@@ -1506,62 +2038,93 @@ function SimulatorView({
             </label>
 
             <label>
-              <span>Forge tier da arma</span>
+              <span>Precisão mostrada no cliente (%)</span>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={1}
+                value={settings.accuracyOverride ?? ""}
+                placeholder={`${combat.estimatedAccuracyPercent}`}
+                onChange={(event) =>
+                  patchSettings({
+                    accuracyOverride:
+                      event.target.value === ""
+                        ? null
+                        : Number(event.target.value),
+                  })
+                }
+              />
+              <small>
+                Vazio usa a estimativa. Consulte Cyclopedia → Combat Stats.
+              </small>
+            </label>
+
+            <label>
+              <span>Tier da arma (nível de Forge)</span>
               <select
                 value={settings.forgeTier}
+                disabled={weaponMaxForgeTier === 0}
                 onChange={(event) =>
                   patchSettings({
                     forgeTier: Number(event.target.value),
                   })
                 }
               >
-                {Array.from({ length: 11 }, (_, tier) => (
+                {Array.from({ length: weaponMaxForgeTier + 1 }, (_, tier) => (
                   <option value={tier} key={tier}>
                     {tier === 0 ? "Sem tier" : `Tier ${tier}`}
                   </option>
                 ))}
               </select>
-              <small>Use o tier que aparece na sua arma.</small>
+              <small>
+                {weaponMaxForgeTier
+                  ? `Classe ${combat.weapon?.tierClass}: até Tier ${weaponMaxForgeTier}.`
+                  : "Esta arma não tem classe de tier elegível para Forge."}
+              </small>
             </label>
           </div>
 
           <div className="imbue-options">
-            <span>Imbuements ativos</span>
+            <span>
+              Imbuements ativos · {activeImbueCount}
+            </span>
+            <small className="imbue-capacities">
+              Slots elegíveis por peça: Arma {capacities.weapon} para
+              Strike/Vampirism/Void · Armadura {capacities.armor} para
+              Vampirism · Capacete {capacities.head} para Void.
+            </small>
             <div>
               <button
                 type="button"
                 aria-pressed={settings.powerfulStrike}
-                onClick={() =>
-                  patchSettings({
-                    powerfulStrike: !settings.powerfulStrike,
-                  })
-                }
+                disabled={!canEnableImbuement("powerfulStrike")}
+                onClick={() => toggleImbuement("powerfulStrike")}
               >
                 Powerful Strike
               </button>
               <button
                 type="button"
                 aria-pressed={settings.powerfulVamp}
-                onClick={() =>
-                  patchSettings({
-                    powerfulVamp: !settings.powerfulVamp,
-                  })
-                }
+                disabled={!canEnableImbuement("powerfulVamp")}
+                onClick={() => toggleImbuement("powerfulVamp")}
               >
                 Vampirism 25%
               </button>
               <button
                 type="button"
                 aria-pressed={settings.powerfulVoid}
-                onClick={() =>
-                  patchSettings({
-                    powerfulVoid: !settings.powerfulVoid,
-                  })
-                }
+                disabled={!canEnableImbuement("powerfulVoid")}
+                onClick={() => toggleImbuement("powerfulVoid")}
               >
                 Void 8%
               </button>
             </div>
+            <small className="imbue-helper">
+              {imbuementPlacementSummary.length
+                ? `Alocação: ${imbuementPlacementSummary.join(" · ")}.`
+                : "Ative um imbuement; o simulador usará uma peça elegível com slot livre."}
+            </small>
           </div>
         </div>
       </details>
@@ -1571,9 +2134,11 @@ function SimulatorView({
         <div>
           <p>
             O RoyalPath usa uma fórmula comunitária reversa para o ataque básico
-            e proxies transparentes para Caldera/Barrage. A rotação respeita o
-            level: só autoattack abaixo do 50, Caldera a partir do 50 e Divine
-            Barrage a partir do 70.
+            e aproximações transparentes para Caldera/Barrage. O ciclo simplificado
+            usa apenas ataques básicos abaixo do 50, inclui Caldera a partir do 50
+            e Divine Barrage a partir do 70. No jogo, Ethereal Barrage é liberada
+            no level 60; o simulador a omite entre os levels 60–69 e, por isso,
+            tende a subestimar essa faixa de forma conservadora.
           </p>
           <code>Modelo {DAMAGE_MODEL_VERSION}</code>
         </div>
@@ -1729,51 +2294,27 @@ function JourneyView({
   completed: readonly string[];
   toggleCompleted: (id: string) => void;
 }) {
-  const [section, setSection] = useState<"progressao" | "guias">("progressao");
-
   return (
     <section className="view" aria-labelledby="journey-title">
       <div className="section-heading">
         <div>
-          <p className="eyebrow">Aprenda no seu ritmo</p>
+          <p className="eyebrow">Seu próximo marco</p>
           <h1 id="journey-title" data-view-title tabIndex={-1}>
             Sua Jornada
           </h1>
           <p>
-            Consulte a progressão quando quiser saber “o que vem depois” e os
-            guias quando um termo ou sistema ainda parecer confuso.
+            Veja o foco de cada faixa de level e marque conquistas conforme
+            avançar. Para aprender um sistema, use a aba Tutoriais.
           </p>
         </div>
+        <span className="model-badge">Progressão por level</span>
       </div>
 
-      <div className="journey-tabs" role="tablist" aria-label="Seções da jornada">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={section === "progressao"}
-          onClick={() => setSection("progressao")}
-        >
-          Progressão por level
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={section === "guias"}
-          onClick={() => setSection("guias")}
-        >
-          Guias passo a passo
-        </button>
-      </div>
-
-      {section === "progressao" ? (
-        <ProgressionView
-          level={level}
-          completed={completed}
-          toggleCompleted={toggleCompleted}
-        />
-      ) : (
-        <GuidesView guides={GUIDES} />
-      )}
+      <ProgressionView
+        level={level}
+        completed={completed}
+        toggleCompleted={toggleCompleted}
+      />
 
       <article className="glossary">
         <div>
@@ -1781,28 +2322,19 @@ function JourneyView({
           <h2>Palavras que você vai encontrar</h2>
         </div>
         <dl>
-          <div>
-            <dt>Loadout / set</dt>
-            <dd>Os equipamentos que estão no seu personagem.</dd>
-          </div>
-          <div>
-            <dt>DPS</dt>
-            <dd>Dano esperado por segundo em uma rotação de referência.</dd>
-          </div>
-          <div>
-            <dt>Sustain</dt>
-            <dd>Quanto você recupera de vida e mana durante a luta.</dd>
-          </div>
-          <div>
-            <dt>BIS</dt>
-            <dd>“Melhor item”, mas sempre para um objetivo específico.</dd>
-          </div>
+          <div><dt>Loadout / set</dt><dd>Os equipamentos selecionados no personagem.</dd></div>
+          <div><dt>DPS</dt><dd>Dano esperado por segundo em uma rotação de referência.</dd></div>
+          <div><dt>Sustain</dt><dd>Quanto você recupera de vida e mana durante a luta.</dd></div>
+          <div><dt>BIS</dt><dd>“Melhor item”, sempre para um objetivo específico.</dd></div>
+          <div><dt>Pull / kite</dt><dd>Grupo atraído / manter distância enquanto ataca.</dd></div>
+          <div><dt>Waste</dt><dd>Gasto líquido quando supplies custam mais que o loot.</dd></div>
+          <div><dt>Proc</dt><dd>Ativação aleatória de um efeito.</dd></div>
+          <div><dt>Tier</dt><dd>Nível aplicado a um item pela Exaltation Forge.</dd></div>
         </dl>
       </article>
     </section>
   );
 }
-
 function ProgressionView({
   level,
   completed,
@@ -1880,29 +2412,167 @@ function ProgressionView({
   );
 }
 
-function GuidesView({ guides }: { guides: readonly Guide[] }) {
-  const [open, setOpen] = useState(guides[0]?.id ?? "");
+function tutorialCategoryLabel(category: Guide["category"]) {
+  return TUTORIAL_CATEGORIES.find((item) => item.id === category)?.label ?? category;
+}
+
+function difficultyLabel(difficulty: Guide["difficulty"]) {
+  if (difficulty === "avancado") return "Avançado";
+  if (difficulty === "intermediario") return "Intermediário";
+  return "Básico";
+}
+
+function TutorialsView({ level }: { level: number }) {
+  const [query, setQuery] = useState("");
+  const [category, setCategory] = useState<TutorialCategory>("todos");
+
+  const visible = useMemo(() => {
+    const normalized = query.trim().toLocaleLowerCase("pt-BR");
+    const difficultyOrder = { basico: 0, intermediario: 1, avancado: 2 } as const;
+
+    return GUIDES.filter((guide) => {
+      const matchesCategory = category === "todos" || guide.category === category;
+      const searchable = [
+        guide.title,
+        guide.eyebrow,
+        guide.summary,
+        ...guide.checklist,
+        ...guide.warnings,
+        ...guide.steps.flatMap((step) => [step.title, step.body, ...(step.detail ?? [])]),
+      ].join(" ").toLocaleLowerCase("pt-BR");
+      return matchesCategory && (!normalized || searchable.includes(normalized));
+    }).sort((left, right) => {
+      const essentialDifference = Number(right.essential === true) - Number(left.essential === true);
+      if (essentialDifference) return essentialDifference;
+      const leftRouteIndex = GUIDE_ROUTE.indexOf(
+        left.id as (typeof GUIDE_ROUTE)[number],
+      );
+      const rightRouteIndex = GUIDE_ROUTE.indexOf(
+        right.id as (typeof GUIDE_ROUTE)[number],
+      );
+      const routeDifference =
+        (leftRouteIndex === -1 ? Number.MAX_SAFE_INTEGER : leftRouteIndex) -
+        (rightRouteIndex === -1 ? Number.MAX_SAFE_INTEGER : rightRouteIndex);
+      if (routeDifference) return routeDifference;
+      const availabilityDifference = Number((left.minLevel ?? 8) > level) - Number((right.minLevel ?? 8) > level);
+      if (availabilityDifference) return availabilityDifference;
+      const difficultyDifference =
+        difficultyOrder[left.difficulty ?? "basico"] - difficultyOrder[right.difficulty ?? "basico"];
+      return difficultyDifference || (left.minLevel ?? 8) - (right.minLevel ?? 8);
+    });
+  }, [category, level, query]);
+
+  const essentialCount = visible.filter((guide) => guide.essential).length;
 
   return (
-    <div className="guide-list" role="tabpanel">
+    <section className="view" aria-labelledby="tutorials-title">
+      <div className="section-heading tutorial-heading">
+        <div>
+          <p className="eyebrow">Aprenda uma coisa por vez</p>
+          <h1 id="tutorials-title" data-view-title tabIndex={-1}>
+            Tutoriais de Royal Paladin
+          </h1>
+          <p>
+            Guias curtos, em ordem de prioridade para iniciantes. Comece pelos
+            essenciais e deixe Forge e Proficiency para quando a base estiver segura.
+          </p>
+        </div>
+        <span className="model-badge">{GUIDES.length} guias</span>
+      </div>
+
+      <div className="tutorial-start">
+        <strong>Rota recomendada:</strong>
+        primeira hora → quiver → treino offline → blessings → promoção →
+        imbuements.
+      </div>
+
+      <div className="tutorial-toolbar">
+        <label className="tutorial-search">
+          <span>Buscar tutorial</span>
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Ex.: imbuement, blessings, Wheel…"
+          />
+        </label>
+        <div className="tutorial-count" aria-live="polite">
+          <strong>{visible.length}</strong> encontrados · {essentialCount} essenciais
+        </div>
+      </div>
+
+      <div className="tutorial-categories" aria-label="Filtrar tutoriais por categoria">
+        {TUTORIAL_CATEGORIES.map((item) => (
+          <button
+            type="button"
+            key={item.id}
+            aria-pressed={category === item.id}
+            onClick={() => setCategory(item.id)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      <GuidesView guides={visible} level={level} />
+    </section>
+  );
+}
+
+function GuidesView({ guides, level }: { guides: readonly Guide[]; level: number }) {
+  const [open, setOpen] = useState(
+    guides.find((guide) => guide.essential)?.id ?? guides[0]?.id ?? "",
+  );
+  const activeOpen = guides.some((guide) => guide.id === open)
+    ? open
+    : guides.find((guide) => guide.essential)?.id ?? guides[0]?.id ?? "";
+
+  return (
+    <div className="guide-list">
       {guides.map((guide, index) => {
-        const expanded = open === guide.id;
+        const expanded = activeOpen === guide.id;
+        const future = (guide.minLevel ?? 8) > level;
+        const relatedSources = guide.relatedSourceIds
+          .map((id) => SOURCES.find((source) => source.id === id))
+          .filter((source): source is (typeof SOURCES)[number] =>
+            Boolean(source),
+          );
         return (
-          <article className="guide-card" key={guide.id}>
+          <article
+            className={`guide-card${guide.essential ? " is-essential" : ""}${future ? " is-future" : ""}`}
+            key={guide.id}
+          >
             <button
               type="button"
               aria-expanded={expanded}
               onClick={() => setOpen(expanded ? "" : guide.id)}
             >
               <span className="guide-number">{String(index + 1).padStart(2, "0")}</span>
-              <span>
+              <span className="guide-title-copy">
+                <span className="guide-badges">
+                  {guide.essential ? <span className="essential-badge">Essencial</span> : null}
+                  <span>{tutorialCategoryLabel(guide.category)}</span>
+                  <span>{difficultyLabel(guide.difficulty)}</span>
+                  <span className={future ? "guide-level is-future" : "guide-level"}>
+                    {future ? `Lv ${guide.minLevel} · para depois` : `Lv ${guide.minLevel ?? 8}+`}
+                  </span>
+                </span>
                 <strong>{guide.title}</strong>
                 <small>{guide.summary}</small>
               </span>
-              <span aria-hidden="true">{expanded ? "−" : "+"}</span>
+              <span className="guide-toggle" aria-hidden="true">{expanded ? "−" : "+"}</span>
             </button>
             {expanded ? (
               <div className="guide-content">
+                <div className="guide-time">
+                  <span>Tempo estimado</span>
+                  <strong>{guide.estimatedTime}</strong>
+                </div>
+                {future ? (
+                  <div className="tutorial-future-note">
+                    Você pode estudar agora, mas este sistema é recomendado a partir do level {guide.minLevel}.
+                  </div>
+                ) : null}
                 <ol>
                   {guide.steps.map((step) => (
                     <li key={step.title}>
@@ -1910,29 +2580,56 @@ function GuidesView({ guides }: { guides: readonly Guide[] }) {
                       <p>{step.body}</p>
                       {step.detail?.length ? (
                         <ul>
-                          {step.detail.map((detail) => (
-                            <li key={detail}>{detail}</li>
-                          ))}
+                          {step.detail.map((detail) => <li key={detail}>{detail}</li>)}
                         </ul>
                       ) : null}
                     </li>
                   ))}
                 </ol>
-                <div className="beginner-note">
-                  <strong>Atenção:</strong> {guide.warnings.join(" ")}
+                <div className="guide-support-grid">
+                  <section className="guide-checklist">
+                    <h3>Antes de começar</h3>
+                    <ul>
+                      {guide.checklist.map((item) => <li key={item}>{item}</li>)}
+                    </ul>
+                  </section>
+                  <section className="guide-warnings">
+                    <h3>Atenção</h3>
+                    <ul>
+                      {guide.warnings.map((warning) => <li key={warning}>{warning}</li>)}
+                    </ul>
+                  </section>
                 </div>
-                <a href={guide.sourceUrl} target="_blank" rel="noreferrer">
-                  {guide.sourceName} ↗
+                <a className="guide-source" href={guide.sourceUrl} target="_blank" rel="noreferrer">
+                  Conferir fonte: {guide.sourceName} ↗
                 </a>
+                {relatedSources.length ? (
+                  <section className="guide-related-sources">
+                    <strong>Fontes relacionadas</strong>
+                    <ul>
+                      {relatedSources.map((source) => (
+                        <li key={source.id}>
+                          <a href={source.url} target="_blank" rel="noreferrer">
+                            {source.name} · {source.publisher} ↗
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ) : null}
               </div>
             ) : null}
           </article>
         );
       })}
+      {!guides.length ? (
+        <div className="empty-state">
+          Nenhum tutorial encontrado. Limpe a busca ou escolha “Todos”.
+        </div>
+      ) : null}
     </div>
   );
 }
-
 function Disclosure() {
   return (
     <aside className="disclosure">
@@ -1954,8 +2651,7 @@ function Footer() {
       <div>
         <strong>RoyalPath · Guia simples para Royal Paladin</strong>
         <p>
-          Conteúdo revisado em 28 jul 2026 · Tibia 15.30 · números podem mudar
-          com patches.
+          Conteúdo revisado em 29 jul 2026 · números podem mudar com patches.
         </p>
       </div>
       <div>
